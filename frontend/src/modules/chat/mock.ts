@@ -4,7 +4,7 @@
  */
 import { defineMock, fail } from '@/core/http'
 import { findMockUserId } from '@/core/auth/mock'
-import { MEMBERS } from '@/modules/identity/data'
+import { MEMBERS } from '@/modules/identity'
 import { DEMO_CONVERSATIONS, DEMO_MESSAGES } from './data'
 import type { Conversation, CreateConversationPayload, Message, SendMessagePayload } from './types'
 

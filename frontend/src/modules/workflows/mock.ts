@@ -4,7 +4,7 @@
  */
 import { defineMock, fail } from '@/core/http'
 import { findMockUserId } from '@/core/auth/mock'
-import { MEMBERS } from '@/modules/identity/data'
+import { MEMBERS } from '@/modules/identity'
 import { DEMO_APPROVALS, NEXT_NODE_BY_TYPE } from './data'
 import type { ApprovalItem, CreateApprovalPayload, DecisionPayload } from './types'
 
