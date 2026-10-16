@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="企业级 AI 智能工作流平台" />
+    <!-- 启动后的实际标题由路由守卫根据 i18n 设置（见 core/auth/guard.ts） -->
+    <title>智擎 AI 智能工作流平台</title>
+    <script>
+      // 首屏主题预解析：在样式加载前写入 data-theme，避免深色模式下的白屏闪烁。
+      // 存储键必须与 core/theme/index.ts 的 STORAGE_KEY 保持一致。
+      ;(function () {
+        try {
+          var mode = localStorage.getItem('app.theme.mode') || 'system'
+          var dark =
+            mode === 'dark' ||
+            (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/app/main.ts"></script>
+  </body>
+</html>

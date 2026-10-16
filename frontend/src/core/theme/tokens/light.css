@@ -1,0 +1,89 @@
+/* =============================================================================
+ * 设计令牌 · 颜色（浅色主题）
+ * 命名约定：
+ *   -surface / -bg     背景
+ *   -soft              浅色底（用于标签、卡片强调块的背景）
+ *   -text              soft 底上的可读文字色
+ *   --chart-*          图表数据色，按序取用，深浅主题下各自校准
+ * ========================================================================== */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* 背景与表面 */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f9fb;
+  --color-surface-3: #eef0f4;
+  --color-sidebar-bg: #ffffff;
+  --color-header-bg: rgba(255, 255, 255, 0.86);
+
+  /* 文字 */
+  --color-text-1: #16181d;
+  --color-text-2: #4c5462;
+  --color-text-3: #8a92a3;
+  --color-text-inverse: #ffffff;
+
+  /* 边框 */
+  --color-border: #e4e7ec;
+  --color-border-strong: #d3d8e0;
+
+  /* 品牌主色 */
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-active: #3730a3;
+  --color-primary-soft: #eef0ff;
+  --color-primary-soft-hover: #e2e6ff;
+  --color-primary-contrast: #ffffff;
+  --color-primary-text: #4338ca;
+
+  /* AI 强调色（渐变、AI 元素专用） */
+  --color-ai-1: #6366f1;
+  --color-ai-2: #a855f7;
+  --color-ai-soft: #f4f1ff;
+
+  /* 语义色 */
+  --color-success: #0e9f6e;
+  --color-success-soft: #e5f7f0;
+  --color-success-text: #067a55;
+
+  /* 警告色系取金黄（与危险红拉开色相距离，考勤日历等小色块场景可辨识） */
+  --color-warning: #ca8a04;
+  --color-warning-soft: #fef3c7;
+  --color-warning-text: #854d0e;
+
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --color-danger-text: #b91c1c;
+
+  --color-info: #0284c7;
+  --color-info-soft: #e6f3fb;
+  --color-info-text: #0369a1;
+
+  /* 遮罩与焦点 */
+  --color-overlay: rgba(16, 19, 27, 0.45);
+  --color-focus-ring: rgba(79, 70, 229, 0.4);
+
+  /* 骨架屏 */
+  --color-skeleton: #e9ecf1;
+  --color-skeleton-shine: #f5f6f9;
+
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.1), 0 2px 4px rgba(16, 24, 40, 0.05);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14), 0 4px 8px rgba(16, 24, 40, 0.06);
+
+  /* 图表（固定色相序，按槽位取用、不循环；顺序经 dataviz 校验脚本验证：
+     相邻对 CVD ΔE ≥ 8、常规视觉 ΔE ≥ 15、明度带与色度下限通过。
+     注：青/琥珀/翠绿三色对白底对比度 < 3:1 —— 使用时必须提供可见数值标签或表格视图） */
+  --chart-1: #6366f1;
+  --chart-2: #06b6d4;
+  --chart-3: #8b5cf6;
+  --chart-4: #f43f5e;
+  --chart-5: #f59e0b;
+  --chart-6: #10b981;
+  --chart-grid: #eceef2;
+  --chart-axis: #98a1b3;
+}

@@ -1,0 +1,45 @@
+/** 通用文案（各模块共享的基础词汇） */
+export default {
+  tagline: '让 AI 融入每一项业务流程',
+  confirm: '确认',
+  cancel: '取消',
+  save: '保存',
+  submit: '提交',
+  close: '关闭',
+  back: '返回',
+  search: '搜索',
+  reset: '重置',
+  refresh: '刷新',
+  loading: '加载中…',
+  empty: '暂无数据',
+  viewAll: '查看全部',
+  actions: '操作',
+  optional: '选填',
+  all: '全部',
+  items: '项',
+  justNow: '刚刚',
+  comingSoon: '功能建设中',
+  greeting: {
+    morning: '早上好',
+    afternoon: '下午好',
+    evening: '晚上好',
+  },
+  ai: {
+    generated: '由 AI 生成',
+    disclaimer: 'AI 生成内容仅供参考，请核对原始信息',
+    thinking: '正在生成…',
+    stop: '停止生成',
+  },
+  theme: {
+    light: '浅色',
+    dark: '深色',
+    system: '跟随系统',
+    label: '主题',
+  },
+  locale: {
+    label: '语言',
+  },
+  validation: {
+    required: '此项为必填',
+  },
+}

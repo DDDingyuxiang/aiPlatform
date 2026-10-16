@@ -1,0 +1,16 @@
+{
+  "app": {
+    "productName": "智擎 AI 智能工作流平台",
+    "shortName": "智擎 AI",
+    "version": "0.1.0",
+    "apiBaseUrl": "/api/v1"
+  },
+  "defaultLocale": "zh-CN",
+  "defaultTheme": "system",
+  "features": {
+    "mockApi": true,
+    "aiAssistant": true,
+    "knowledgeQa": true,
+    "publishAnnouncements": true
+  }
+}

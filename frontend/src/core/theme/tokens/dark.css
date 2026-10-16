@@ -1,0 +1,82 @@
+/* =============================================================================
+ * 设计令牌 · 颜色（深色主题）
+ * 与 light.css 保持同名令牌，深色下单独校准对比度（正文对比度目标 ≥ 4.5:1）。
+ * ========================================================================== */
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* 背景与表面 */
+  --color-bg: #0e1119;
+  --color-surface: #161a25;
+  --color-surface-2: #1b2030;
+  --color-surface-3: #222839;
+  --color-sidebar-bg: #141824;
+  --color-header-bg: rgba(20, 24, 36, 0.86);
+
+  /* 文字 */
+  --color-text-1: #e9ecf4;
+  --color-text-2: #a8b1c3;
+  --color-text-3: #6f7a90;
+  --color-text-inverse: #16181d;
+
+  /* 边框 */
+  --color-border: #262d3f;
+  --color-border-strong: #364057;
+
+  /* 品牌主色 */
+  --color-primary: #6d70f2;
+  --color-primary-hover: #8083f6;
+  --color-primary-active: #9295f8;
+  --color-primary-soft: rgba(109, 112, 242, 0.16);
+  --color-primary-soft-hover: rgba(109, 112, 242, 0.24);
+  --color-primary-contrast: #ffffff;
+  --color-primary-text: #a5b4fc;
+
+  /* AI 强调色 */
+  --color-ai-1: #818cf8;
+  --color-ai-2: #c084fc;
+  --color-ai-soft: rgba(129, 140, 248, 0.14);
+
+  /* 语义色 */
+  --color-success: #34d399;
+  --color-success-soft: rgba(52, 211, 153, 0.14);
+  --color-success-text: #6ee7b7;
+
+  --color-warning: #facc15;
+  --color-warning-soft: rgba(250, 204, 21, 0.16);
+  --color-warning-text: #fde047;
+
+  --color-danger: #f87171;
+  --color-danger-soft: rgba(248, 113, 113, 0.16);
+  --color-danger-text: #fca5a5;
+
+  --color-info: #38bdf8;
+  --color-info-soft: rgba(56, 189, 248, 0.14);
+  --color-info-text: #7dd3fc;
+
+  /* 遮罩与焦点 */
+  --color-overlay: rgba(4, 6, 10, 0.62);
+  --color-focus-ring: rgba(109, 112, 242, 0.5);
+
+  /* 骨架屏 */
+  --color-skeleton: #232a3b;
+  --color-skeleton-shine: #2b3346;
+
+  /* 阴影 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.35);
+
+  /* 图表（与浅色同槽位同色相，按深色明度带 L 0.48–0.67 单独取值；
+     已通过 dataviz 校验脚本在深色面板底色上的全部检查） */
+  --chart-1: #6366f1;
+  --chart-2: #0891b2;
+  --chart-3: #8b5cf6;
+  --chart-4: #f43f5e;
+  --chart-5: #b45309;
+  --chart-6: #059669;
+  --chart-grid: #232a3b;
+  --chart-axis: #6f7a90;
+}

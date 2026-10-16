@@ -1,0 +1,45 @@
+/** Shared base vocabulary */
+export default {
+  tagline: 'Let AI power every business process',
+  confirm: 'Confirm',
+  cancel: 'Cancel',
+  save: 'Save',
+  submit: 'Submit',
+  close: 'Close',
+  back: 'Back',
+  search: 'Search',
+  reset: 'Reset',
+  refresh: 'Refresh',
+  loading: 'Loading…',
+  empty: 'No data',
+  viewAll: 'View all',
+  actions: 'Actions',
+  optional: 'Optional',
+  all: 'All',
+  items: 'items',
+  justNow: 'Just now',
+  comingSoon: 'Coming soon',
+  greeting: {
+    morning: 'Good morning',
+    afternoon: 'Good afternoon',
+    evening: 'Good evening',
+  },
+  ai: {
+    generated: 'AI generated',
+    disclaimer: 'AI-generated content is for reference only. Please verify against the original source.',
+    thinking: 'Generating…',
+    stop: 'Stop',
+  },
+  theme: {
+    light: 'Light',
+    dark: 'Dark',
+    system: 'System',
+    label: 'Theme',
+  },
+  locale: {
+    label: 'Language',
+  },
+  validation: {
+    required: 'This field is required',
+  },
+}
