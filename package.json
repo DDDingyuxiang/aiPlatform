@@ -1,0 +1,17 @@
+{
+  "name": "aiplatform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "aiPlatform 企业级 AI 智能工作流平台",
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=24.12.0"
+  },
+  "scripts": {
+    "contracts:build": "pnpm --filter @aiplatform/contracts build",
+    "contracts:typecheck": "pnpm --filter @aiplatform/contracts typecheck",
+    "contracts:test": "pnpm --filter @aiplatform/contracts test",
+    "frontend:type-check": "pnpm --filter frontend type-check",
+    "frontend:test": "pnpm --filter frontend test"
+  }
+}

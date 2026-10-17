@@ -1,0 +1,21 @@
+# Node
+node_modules/
+pnpm-debug.log*
+
+# 构建产物（契约包由源码构建，不入库）
+packages/*/dist/
+*.tsbuildinfo
+
+# 环境变量与本地配置
+.env
+.env.*
+!.env.example
+
+# Python（后续 AI 服务）
+__pycache__/
+*.py[cod]
+.venv/
+
+# 日志与系统文件
+*.log
+.DS_Store

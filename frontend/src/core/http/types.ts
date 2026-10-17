@@ -1,15 +1,9 @@
 /** HTTP 层公共类型与统一约定 */
+import type { ApiEnvelope } from '@aiplatform/contracts'
+
+export type { ApiEnvelope }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-
-/** 后端统一响应信封（与后端 API 约定保持一致） */
-export interface ApiEnvelope<T> {
-  /** 0 表示成功；非 0 为稳定业务错误码 */
-  code: number
-  data: T
-  message: string
-  requestId: string
-}
 
 export const SUCCESS_CODE = 0
 
