@@ -22,6 +22,11 @@ function onComingSoon(close: () => void): void {
   toast.info(t('common.comingSoon'))
 }
 
+function onProfile(close: () => void): void {
+  close()
+  void router.push({ name: 'profile' })
+}
+
 async function onLogout(close: () => void): Promise<void> {
   close()
   await auth.logout()
@@ -48,7 +53,7 @@ async function onLogout(close: () => void): Promise<void> {
         <p class="user-menu__sub">{{ auth.user?.department }} · {{ roleLabel }}</p>
       </div>
       <div class="user-menu__divider" />
-      <BaseDropdownItem icon="user" @click="onComingSoon(close)">
+      <BaseDropdownItem icon="user" @click="onProfile(close)">
         {{ t('auth.profile') }}
       </BaseDropdownItem>
       <BaseDropdownItem icon="settings" @click="onComingSoon(close)">

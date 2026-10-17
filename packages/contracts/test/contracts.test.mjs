@@ -8,6 +8,7 @@ import {
   employeeSchema,
   loginPayloadSchema,
   monthSchema,
+  profileUpdateSchema,
   userProfileSchema,
 } from '../dist/index.js'
 
@@ -109,6 +110,18 @@ test('审批单结构与前端时间线一致，并允许 skipped 节点', () =>
     steps: [{ ...approval.steps[0], status: 'skipped' }],
   })
   assert.equal(skipped.steps[0].status, 'skipped')
+})
+
+test('个人资料修改只接受可自助编辑字段', () => {
+  assert.deepEqual(profileUpdateSchema.parse({ name: ' 王立 ', position: null, phone: '' }), {
+    name: '王立',
+    position: null,
+    phone: '',
+  })
+  assert.equal(profileUpdateSchema.safeParse({ email: 'admin@example.com' }).success, true)
+  assert.equal(profileUpdateSchema.safeParse({}).success, false)
+  assert.equal(profileUpdateSchema.safeParse({ email: 'not-an-email' }).success, false)
+  assert.equal(profileUpdateSchema.safeParse({ department: '技术部' }).success, false)
 })
 
 test('审批类型与状态只接受约定枚举', () => {

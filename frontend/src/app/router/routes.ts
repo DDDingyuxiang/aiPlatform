@@ -10,7 +10,7 @@ import MainLayout from '@/layouts/MainLayout.vue'
 import NotFoundView from '@/app/views/NotFoundView.vue'
 import PlaceholderView from '@/app/views/PlaceholderView.vue'
 import { DashboardView } from '@/modules/dashboard'
-import { LoginView } from '@/modules/auth'
+import { LoginView, ProfileView } from '@/modules/auth'
 import { ChatView } from '@/modules/chat'
 import { TaskCenterView } from '@/modules/tasks'
 import { WorkflowCenterView } from '@/modules/workflows'
@@ -38,6 +38,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'dashboard',
         component: DashboardView,
         meta: { titleKey: 'nav.dashboard', icon: 'dashboard' },
+      },
+      {
+        path: 'profile',
+        name: 'profile',
+        component: ProfileView,
+        meta: { titleKey: 'auth.profile', icon: 'user' },
       },
       {
         path: 'chat',

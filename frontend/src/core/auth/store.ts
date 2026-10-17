@@ -8,7 +8,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authApi } from './api'
 import { clearToken, getToken, setToken } from './token'
-import type { LoginPayload, RoleCode, UserProfile } from './types'
+import type { LoginPayload, ProfileUpdate, RoleCode, UserProfile } from './types'
 
 const USER_CACHE_KEY = 'app.auth.user'
 
@@ -80,9 +80,26 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** 修改个人资料并同步本地缓存（用于头部、个人卡片等全局展示） */
+  async function updateProfile(payload: ProfileUpdate): Promise<UserProfile> {
+    const profile = await authApi.updateProfile(payload)
+    user.value = profile
+    cacheUser(profile)
+    return profile
+  }
+
   function hasRole(role: RoleCode): boolean {
     return user.value?.role === role
   }
 
-  return { user, loggingIn, isAuthenticated, login, logout, refreshProfile, hasRole }
+  return {
+    user,
+    loggingIn,
+    isAuthenticated,
+    login,
+    logout,
+    refreshProfile,
+    updateProfile,
+    hasRole,
+  }
 })

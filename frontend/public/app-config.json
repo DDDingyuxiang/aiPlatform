@@ -8,7 +8,7 @@
   "defaultLocale": "zh-CN",
   "defaultTheme": "system",
   "features": {
-    "mockApi": true,
+    "mockApi": false,
     "aiAssistant": true,
     "knowledgeQa": true,
     "publishAnnouncements": true

@@ -5,6 +5,7 @@
 export type {
   LoginPayload,
   LoginResult,
+  ProfileUpdate,
   SystemRoleCode as RoleCode,
   UserProfile,
 } from '@aiplatform/contracts'

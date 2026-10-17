@@ -73,4 +73,24 @@ describe('auth store', () => {
     expect(auth.isAuthenticated).toBe(true)
     expect(sessionStorage.getItem('app.auth.token')).toBeTruthy()
   })
+
+  it('修改个人资料后同步内存状态与本地缓存', async () => {
+    setToken('mock-token-u-002-1730000000000', true)
+    const auth = useAuthStore(createPinia())
+
+    const pending = auth.updateProfile({
+      name: '李思思',
+      position: '市场主管',
+      email: 'lisi-new@example.com',
+      phone: '',
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    await pending
+
+    expect(auth.user?.name).toBe('李思思')
+    expect(auth.user?.position).toBe('市场主管')
+    expect(auth.user?.email).toBe('lisi-new@example.com')
+    expect(auth.user?.phone).toBe('')
+    expect(JSON.parse(localStorage.getItem('app.auth.user') ?? '{}').name).toBe('李思思')
+  })
 })

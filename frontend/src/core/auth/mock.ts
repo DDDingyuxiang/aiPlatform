@@ -76,3 +76,23 @@ defineMock('GET', '/auth/profile', ({ token }) => {
   if (!user) return fail(40100, '登录状态已失效', 401)
   return toProfile(user)
 })
+
+defineMock('PATCH', '/auth/profile', ({ body, token }) => {
+  const userId = findMockUserId(token)
+  const user = MOCK_USERS.find((item) => item.id === userId)
+  if (!user) return fail(40100, '登录状态已失效', 401)
+
+  const payload = body as Partial<Pick<UserProfile, 'name' | 'position' | 'email' | 'phone'>> | undefined
+  if (!payload || Object.keys(payload).length === 0) return fail(40000, '请求参数不合法', 400)
+
+  if (payload.name !== undefined) {
+    const name = payload.name.trim()
+    if (!name) return fail(40000, '请求参数不合法', 400)
+    user.name = name
+  }
+  if (payload.position !== undefined) user.position = payload.position?.trim() ?? ''
+  if (payload.email !== undefined) user.email = payload.email.trim().toLowerCase()
+  if (payload.phone !== undefined) user.phone = payload.phone?.trim() ?? ''
+
+  return toProfile(user)
+})
