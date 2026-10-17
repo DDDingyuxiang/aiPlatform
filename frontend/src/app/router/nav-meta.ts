@@ -5,6 +5,7 @@
  * 面板区块直接引用模块公开组件，不再从路由表推导菜单。
  */
 import 'vue-router'
+import type { PermissionCodeValue } from '@aiplatform/contracts'
 import type { IconName } from '@/shared/components/icon-registry'
 
 declare module 'vue-router' {
@@ -17,5 +18,7 @@ declare module 'vue-router' {
     requiresAuth?: boolean
     /** 主区取消内边距与最大宽度（对话等应用型全幅视图） */
     fluid?: boolean
+    /** 访问所需权限码（任一满足即可）；未声明表示所有登录用户可访问 */
+    permissions?: PermissionCodeValue[]
   }
 }

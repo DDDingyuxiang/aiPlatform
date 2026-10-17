@@ -9,10 +9,16 @@ export default {
   analytics: 'Analytics',
   announcements: 'Announcements',
   members: 'Members',
+  systemUsers: 'Employees',
   backHome: 'Back to dashboard',
   notFound: {
     title: 'Page not found',
     desc: 'The page you are looking for does not exist or has been moved.',
+    back: 'Back to dashboard',
+  },
+  forbidden: {
+    title: 'Access denied',
+    desc: 'Your account does not have permission to access this page. Contact a super administrator for access.',
     back: 'Back to dashboard',
   },
   placeholder: {

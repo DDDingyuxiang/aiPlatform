@@ -6,6 +6,7 @@ import panel from './panel'
 import chat from './chat'
 import ops from './ops'
 import intel from './intel'
+import system from './system'
 
 export default {
   common,
@@ -16,4 +17,5 @@ export default {
   chat,
   ops,
   intel,
+  system,
 }

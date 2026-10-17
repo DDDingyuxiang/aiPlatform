@@ -1,9 +1,15 @@
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { UserProfile } from '@aiplatform/contracts'
+import {
+  EMPLOYEE_MANAGE_PERMISSION,
+  SUPER_ADMIN_PERMISSION,
+} from '@aiplatform/contracts'
+import type { AdminEmployee, UserProfile } from '@aiplatform/contracts'
 import { createApp } from '../../app.js'
+import { createAdminRouter } from '../../modules/identity/admin-router.js'
 import { createAuthMiddleware } from '../../modules/identity/auth-middleware.js'
 import { createIdentityRouter } from '../../modules/identity/identity-router.js'
+import { createRequireAnyPermission } from '../../modules/identity/policies.js'
 import { createAuthRouter } from '../../modules/identity/router.js'
 import type {
   AuthContext,
@@ -24,11 +30,34 @@ const user: UserProfile = {
   username: 'admin',
   name: '王立',
   role: 'admin',
+  permissions: ['system.super_admin'],
   employeeId: 'E1001',
   position: '数字化平台主管',
   department: '综合管理部',
   email: 'admin@example.com',
   phone: '13800001001',
+}
+
+const adminEmployee: AdminEmployee = {
+  id: authContext.publicId,
+  company: {
+    id: '01J00000000000000000000009',
+    code: 'demo',
+    name: '演示企业',
+    status: 'active',
+  },
+  username: 'admin',
+  employeeId: 'E1001',
+  name: '王立',
+  position: '数字化平台主管',
+  phone: '13800001001',
+  email: 'admin@example.com',
+  departmentId: '10',
+  department: '综合管理部',
+  roles: [{ code: 'admin', name: '管理员' }],
+  status: 'active',
+  createdAt: '2026-10-17T00:00:00.000Z',
+  updatedAt: '2026-10-17T00:00:00.000Z',
 }
 
 const silentLogger: Logger = {
@@ -38,8 +67,9 @@ const silentLogger: Logger = {
   error: () => {},
 }
 
-function createTestApp(options?: { healthy?: boolean }) {
+function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) {
   let healthy = options?.healthy ?? true
+  const granted = options?.permissions ?? ['system.super_admin']
 
   const service: IdentityService = {
     login: vi.fn(async () => ({ token: 'signed-token', user })),
@@ -57,6 +87,28 @@ function createTestApp(options?: { healthy?: boolean }) {
       ...user,
       name: payload.name ?? user.name,
     })),
+    permissions: vi.fn(async () => granted),
+    employeeOptions: vi.fn(async () => ({
+      companies: [],
+      departments: [],
+      positions: [],
+      roles: [],
+    })),
+    adminUsers: vi.fn(async () => ({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    })),
+    createEmployee: vi.fn(async (_auth, payload) => ({
+      ...adminEmployee,
+      username: payload.username,
+      employeeId: payload.employeeNo,
+      email: payload.email,
+    })),
+    updateEmployee: vi.fn(async () => adminEmployee),
+    deleteEmployee: vi.fn(async () => ({ ok: true })),
+    adminRoles: vi.fn(async () => ({ roles: [], permissions: [] })),
   }
   const tokens: TokenVerifier = {
     verify: vi.fn(async (token: string) => {
@@ -65,12 +117,15 @@ function createTestApp(options?: { healthy?: boolean }) {
     }),
   }
   const requireAuth = createAuthMiddleware(tokens)
+  const requireAnyPermission = createRequireAnyPermission(service)
   const authRouter = createAuthRouter({ service, requireAuth })
   const identityRouter = createIdentityRouter({ service, requireAuth })
+  const adminRouter = createAdminRouter({ service, requireAuth, requireAnyPermission })
 
   const app = createApp({
     authRouter,
     identityRouter,
+    adminRouter,
     healthCheck: async () => {
       if (!healthy) throw new Error('database down')
     },
@@ -243,6 +298,86 @@ describe('auth routes', () => {
     expect(attendance.status).toBe(200)
     expect(attendance.body.data.month).toBe('2026-10')
     expect(attendance.body.data.days).toEqual([{ date: '2026-10-01', status: 'normal' }])
+  })
+
+  it('管理端接口按任一权限鉴权：401 / 403 / 超管 200 / 公司管理员 200', async () => {
+    const missingToken = await request(createTestApp().app).get('/api/v1/admin/users')
+    expect(missingToken.status).toBe(401)
+    expect(missingToken.body).toMatchObject({ code: ErrorCode.UNAUTHORIZED })
+
+    const forbiddenApp = createTestApp({ permissions: [] })
+    const forbidden = await request(forbiddenApp.app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', 'Bearer valid-token')
+    expect(forbidden.status).toBe(403)
+    expect(forbidden.body).toMatchObject({ code: ErrorCode.FORBIDDEN, data: null })
+
+    const companyAdmin = createTestApp({ permissions: [EMPLOYEE_MANAGE_PERMISSION] })
+    const companyAllowed = await request(companyAdmin.app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', 'Bearer valid-token')
+    expect(companyAllowed.status).toBe(200)
+    expect(companyAllowed.body.data).toEqual({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    })
+
+    const superAdmin = createTestApp({ permissions: [SUPER_ADMIN_PERMISSION] })
+    const allowed = await request(superAdmin.app)
+      .get('/api/v1/admin/users')
+      .set('Authorization', 'Bearer valid-token')
+    expect(allowed.status).toBe(200)
+
+    const roles = await request(superAdmin.app)
+      .get('/api/v1/admin/roles')
+      .set('Authorization', 'Bearer valid-token')
+    expect(roles.status).toBe(200)
+    expect(roles.body.data).toEqual({ roles: [], permissions: [] })
+  })
+
+  it('管理端员工写接口校验载荷并返回契约结构', async () => {
+    const { app, service } = createTestApp({ permissions: [EMPLOYEE_MANAGE_PERMISSION] })
+
+    const created = await request(app)
+      .post('/api/v1/admin/users')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        username: 'zhangsan',
+        employeeNo: 'E2001',
+        email: 'zhangsan@example.com',
+        name: '张三',
+        initialPassword: '12345678',
+      })
+    expect(created.status).toBe(200)
+    expect(created.body.data.username).toBe('zhangsan')
+    expect(service.createEmployee).toHaveBeenCalledWith(authContext, {
+      username: 'zhangsan',
+      employeeNo: 'E2001',
+      email: 'zhangsan@example.com',
+      name: '张三',
+      initialPassword: '12345678',
+    })
+
+    const invalid = await request(app)
+      .post('/api/v1/admin/users')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        username: 'zhangsan',
+        employeeNo: 'E2001',
+        email: 'zhangsan@example.com',
+        name: '张三',
+        initialPassword: '123',
+      })
+    expect(invalid.status).toBe(400)
+    expect(invalid.body).toMatchObject({ code: ErrorCode.INVALID_PAYLOAD })
+
+    const deleted = await request(app)
+      .delete(`/api/v1/admin/users/${authContext.publicId}`)
+      .set('Authorization', 'Bearer valid-token')
+    expect(deleted.status).toBe(200)
+    expect(deleted.body.data).toEqual({ ok: true })
   })
 
   it('允许配置的前端来源跨域访问', async () => {

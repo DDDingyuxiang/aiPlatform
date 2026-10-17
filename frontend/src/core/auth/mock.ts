@@ -3,6 +3,10 @@
  * 路径与响应结构与真实接口约定一致；被 app/register-mocks.ts 按需动态导入，
  * 仅在 features.mockApi 开启时注册（模块导入即注册，见 core/http/mock.ts）。
  */
+import {
+  EMPLOYEE_MANAGE_PERMISSION,
+  SUPER_ADMIN_PERMISSION,
+} from '@aiplatform/contracts/permissions'
 import { defineMock, fail } from '@/core/http'
 import type { LoginPayload, LoginResult, UserProfile } from './types'
 
@@ -17,6 +21,7 @@ const MOCK_USERS: MockUser[] = [
     password: '123456',
     name: '王立',
     role: 'admin',
+    permissions: [EMPLOYEE_MANAGE_PERMISSION],
     employeeId: 'E1001',
     position: '数字化平台主管',
     department: '综合管理部',
@@ -29,11 +34,25 @@ const MOCK_USERS: MockUser[] = [
     password: '123456',
     name: '李思',
     role: 'employee',
+    permissions: [],
     employeeId: 'E1024',
     position: '市场专员',
     department: '市场部',
     email: 'lisi@example.com',
     phone: '13800001024',
+  },
+  {
+    id: 'u-003',
+    username: 'superadmin',
+    password: '123456',
+    name: '平台管理员',
+    role: 'super_admin',
+    permissions: [SUPER_ADMIN_PERMISSION],
+    employeeId: 'P0001',
+    position: '平台超级管理员',
+    department: '平台管理',
+    email: 'superadmin@example.com',
+    phone: '13800000000',
   },
 ]
 
@@ -50,6 +69,13 @@ function toProfile(user: MockUser): UserProfile {
 export function findMockUserId(token: string | null): string | null {
   if (!token || !token.startsWith('mock-token-')) return null
   return MOCK_USERS.find((user) => token.startsWith(`mock-token-${user.id}-`))?.id ?? null
+}
+
+/** 供其他模块 Mock 复用：按令牌返回当前用户资料（不含密码） */
+export function findMockUser(token: string | null): UserProfile | null {
+  const userId = findMockUserId(token)
+  const user = MOCK_USERS.find((item) => item.id === userId)
+  return user ? toProfile(user) : null
 }
 
 defineMock('POST', '/auth/login', ({ body }) => {

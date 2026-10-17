@@ -5,11 +5,15 @@
  * 密码来自 SEED_ADMIN_PASSWORD，不写入代码与版本库。
  */
 import { ulid } from 'ulid'
+import {
+  EMPLOYEE_MANAGE_PERMISSION,
+  SUPER_ADMIN_PERMISSION,
+} from '@aiplatform/contracts'
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
 import { loadEnvFile } from '../config/env.js'
 import { loadAppConfig } from '../config/index.js'
 import { createDatabasePool } from '../infra/db.js'
-import { hashPassword } from '../modules/identity/password.js'
+import { PLATFORM_COMPANY_CODE, hashPassword } from '../modules/identity/index.js'
 import { resolveDateInTimeZone, resolveMonthRange } from '../shared/month-range.js'
 
 interface IdRow extends RowDataPacket {
@@ -106,15 +110,68 @@ async function ensureRole(
   return created
 }
 
+async function ensurePermission(
+  connection: PoolConnection,
+  code: string,
+  description: string,
+): Promise<string> {
+  const existing = await findId(
+    connection,
+    'SELECT id FROM permissions WHERE code = ? LIMIT 1',
+    [code],
+  )
+  if (existing) return existing
+
+  await connection.execute(
+    `INSERT INTO permissions (code, description)
+     VALUES (?, ?)`,
+    [code, description],
+  )
+  const created = await findId(connection, 'SELECT id FROM permissions WHERE code = ? LIMIT 1', [
+    code,
+  ])
+  if (!created) throw new Error('创建演示权限失败')
+  return created
+}
+
+async function ensureRolePermission(
+  connection: PoolConnection,
+  roleId: string,
+  permissionId: string,
+): Promise<void> {
+  const existing = await findId(
+    connection,
+    'SELECT id FROM role_permissions WHERE role_id = ? AND permission_id = ? LIMIT 1',
+    [roleId, permissionId],
+  )
+  if (existing) return
+
+  await connection.execute(
+    `INSERT INTO role_permissions (role_id, permission_id)
+     VALUES (?, ?)`,
+    [roleId, permissionId],
+  )
+}
+
+interface SeedEmployee {
+  username: string
+  employeeNo: string
+  email: string
+  displayName: string
+  position: string
+  phone: string
+}
+
 async function ensureEmployee(
   connection: PoolConnection,
   tenantId: string,
   passwordHash: string,
+  employee: SeedEmployee,
 ): Promise<string> {
   let employeeId = await findId(
     connection,
     'SELECT id FROM employees WHERE tenant_id = ? AND username = ? AND deleted_at IS NULL LIMIT 1',
-    [tenantId, 'admin'],
+    [tenantId, employee.username],
   )
 
   if (!employeeId) {
@@ -125,20 +182,20 @@ async function ensureEmployee(
       [
         tenantId,
         ulid(),
-        'E1001',
-        'admin',
-        'admin@example.com',
-        '王立',
-        '数字化平台主管',
-        '13800001001',
+        employee.employeeNo,
+        employee.username,
+        employee.email,
+        employee.displayName,
+        employee.position,
+        employee.phone,
       ],
     )
     employeeId = await findId(
       connection,
       'SELECT id FROM employees WHERE tenant_id = ? AND username = ? LIMIT 1',
-      [tenantId, 'admin'],
+      [tenantId, employee.username],
     )
-    if (!employeeId) throw new Error('创建演示员工失败')
+    if (!employeeId) throw new Error(`创建演示员工失败：${employee.username}`)
   }
 
   const credentialId = await findId(
@@ -265,17 +322,100 @@ async function main(): Promise<void> {
   try {
     await connection.beginTransaction()
 
-    const tenantId = await ensureCompany(connection, companyCode, companyName)
-    const departmentId = await ensureDepartment(connection, tenantId, '综合管理部')
-    const adminRoleId = await ensureRole(connection, tenantId, 'admin', '管理员')
-    await ensureRole(connection, tenantId, 'employee', '员工')
-    const employeeId = await ensureEmployee(connection, tenantId, passwordHash)
-    await ensureMembership(connection, tenantId, employeeId, departmentId)
-    await ensureEmployeeRole(connection, tenantId, employeeId, adminRoleId)
+    const demoTenantId = await ensureCompany(connection, companyCode, companyName)
+    const platformTenantId = await ensureCompany(
+      connection,
+      PLATFORM_COMPANY_CODE,
+      '平台管理',
+    )
+    const demoDepartmentId = await ensureDepartment(connection, demoTenantId, '综合管理部')
+    const platformDepartmentId = await ensureDepartment(
+      connection,
+      platformTenantId,
+      '平台管理部',
+    )
+
+    const employeeManagePermissionId = await ensurePermission(
+      connection,
+      EMPLOYEE_MANAGE_PERMISSION,
+      '本企业员工管理（不跨公司）',
+    )
+    const superAdminPermissionId = await ensurePermission(
+      connection,
+      SUPER_ADMIN_PERMISSION,
+      '超级管理员权限（拥有全部权限）',
+    )
+
+    const adminRoleId = await ensureRole(connection, demoTenantId, 'admin', '管理员')
+    await ensureRole(connection, demoTenantId, 'employee', '员工')
+    await ensureRolePermission(connection, adminRoleId, employeeManagePermissionId)
+
+    // 兼容上一版种子：演示公司不再拥有 super_admin 角色，避免角色展示与权限语义混淆
+    const legacySuperAdminRoleId = await findId(
+      connection,
+      'SELECT id FROM roles WHERE tenant_id = ? AND code = ? LIMIT 1',
+      [demoTenantId, 'super_admin'],
+    )
+    if (legacySuperAdminRoleId) {
+      await connection.execute(
+        'DELETE FROM employee_roles WHERE tenant_id = ? AND role_id = ?',
+        [demoTenantId, legacySuperAdminRoleId],
+      )
+      await connection.execute(
+        'UPDATE roles SET deleted_at = UTC_TIMESTAMP(3) WHERE id = ? AND deleted_at IS NULL',
+        [legacySuperAdminRoleId],
+      )
+    }
+
+    const superAdminRoleId = await ensureRole(
+      connection,
+      platformTenantId,
+      'super_admin',
+      '超级管理员',
+    )
+    await ensureRolePermission(connection, superAdminRoleId, superAdminPermissionId)
+
+    const adminEmployeeId = await ensureEmployee(connection, demoTenantId, passwordHash, {
+      username: 'admin',
+      employeeNo: 'E1001',
+      email: 'admin@example.com',
+      displayName: '王立',
+      position: '数字化平台主管',
+      phone: '13800001001',
+    })
+    await ensureMembership(connection, demoTenantId, adminEmployeeId, demoDepartmentId)
+    await ensureEmployeeRole(connection, demoTenantId, adminEmployeeId, adminRoleId)
+
+    const platformAdminEmployeeId = await ensureEmployee(
+      connection,
+      platformTenantId,
+      passwordHash,
+      {
+        username: 'superadmin',
+        employeeNo: 'P0001',
+        email: 'superadmin@example.com',
+        displayName: '平台管理员',
+        position: '平台超级管理员',
+        phone: '13800000000',
+      },
+    )
+    await ensureMembership(
+      connection,
+      platformTenantId,
+      platformAdminEmployeeId,
+      platformDepartmentId,
+    )
+    await ensureEmployeeRole(
+      connection,
+      platformTenantId,
+      platformAdminEmployeeId,
+      superAdminRoleId,
+    )
+
     const attendanceDays = await ensureAttendance(
       connection,
-      tenantId,
-      employeeId,
+      demoTenantId,
+      adminEmployeeId,
       config.timezone,
     )
 
@@ -285,10 +425,20 @@ async function main(): Promise<void> {
       JSON.stringify({
         level: 'info',
         message: 'seed.completed',
-        companyCode,
-        tenantId,
-        employeeId,
-        username: 'admin',
+        demoCompany: {
+          code: companyCode,
+          tenantId: demoTenantId,
+          username: 'admin',
+          roles: ['admin'],
+          permissions: [EMPLOYEE_MANAGE_PERMISSION],
+        },
+        platformCompany: {
+          code: PLATFORM_COMPANY_CODE,
+          tenantId: platformTenantId,
+          username: 'superadmin',
+          roles: ['super_admin'],
+          permissions: [SUPER_ADMIN_PERMISSION],
+        },
         attendanceDays,
         timezone: config.timezone,
       }),

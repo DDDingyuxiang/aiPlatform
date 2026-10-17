@@ -13,6 +13,8 @@ export interface CreateAppOptions {
   authRouter: Router
   /** identity 模块导出的组织/考勤路由 */
   identityRouter: Router
+  /** identity 模块导出的管理端路由（需超管权限） */
+  adminRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -56,6 +58,7 @@ export function createApp(options: CreateAppOptions): Express {
 
   api.use('/auth', options.authRouter)
   api.use('/identity', options.identityRouter)
+  api.use('/admin', options.adminRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

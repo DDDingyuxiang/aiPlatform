@@ -5,7 +5,7 @@
  * 后端登录接口应返回该结构，敏感字段（密码哈希等）不得出现在契约中。
  */
 import { z } from 'zod'
-import { memberSchema, systemRoleCodeSchema } from './identity.js'
+import { memberSchema, permissionCodeSchema, systemRoleCodeSchema } from './identity.js'
 
 /** 当前登录用户资料（首页个人卡片） */
 export const userProfileSchema = memberSchema
@@ -13,6 +13,8 @@ export const userProfileSchema = memberSchema
   .extend({
     username: z.string().min(1).max(64),
     role: systemRoleCodeSchema,
+    /** 角色授予的权限码；system.super_admin 视为全量权限 */
+    permissions: z.array(permissionCodeSchema),
   })
 export type UserProfile = z.infer<typeof userProfileSchema>
 

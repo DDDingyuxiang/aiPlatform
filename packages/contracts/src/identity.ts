@@ -10,12 +10,16 @@ import { z } from 'zod'
 import { apiIdSchema, isoDateTimeSchema, paginationQuerySchema } from './common.js'
 
 /** 系统角色代码（与前端 auth.role.* 文案对应） */
-export const systemRoleCodeSchema = z.enum(['admin', 'employee'])
+export const systemRoleCodeSchema = z.enum(['super_admin', 'admin', 'employee'])
 export type SystemRoleCode = z.infer<typeof systemRoleCodeSchema>
 
 /** 角色代码（支持企业自定义角色，对应 roles.code） */
 export const roleCodeSchema = z.string().min(1).max(64)
 export type RoleCodeValue = z.infer<typeof roleCodeSchema>
+
+/** 权限码（对应 permissions.code，例如 system.super_admin） */
+export const permissionCodeSchema = z.string().min(1).max(128)
+export type PermissionCodeValue = z.infer<typeof permissionCodeSchema>
 
 export const employeeStatusSchema = z.enum(['active', 'disabled', 'locked'])
 export type EmployeeStatus = z.infer<typeof employeeStatusSchema>

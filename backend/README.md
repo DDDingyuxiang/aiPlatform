@@ -1,8 +1,8 @@
 # aiPlatform 后端
 
 Express 5 + TypeScript 的业务后端，采用模块化单体结构。当前完成
-**identity 模块**（登录 / 登出 / 当前用户资料 / 通讯录 / 当月考勤），
-所有业务模块后续统一复用该认证中间件。
+**identity 模块**（登录 / 登出 / 当前用户资料 / 通讯录 / 当月考勤 /
+角色与权限、管理端只读总览），所有业务模块后续统一复用该认证与授权中间件。
 
 ## 目录结构
 
@@ -17,11 +17,14 @@ backend/
 │   ├── http/                  信封、错误处理、请求 ID、日志
 │   ├── infra/                 MySQL 连接池
 │   ├── modules/
-│   │   └── identity/          认证、资料、目录与考勤（逐步补齐）
+│   │   └── identity/          认证、资料、目录、考勤、角色与权限
 │   │       ├── index.ts       模块唯一公共入口
 │   │       ├── router.ts      /api/v1/auth
-│   │       ├── service.ts     登录/资料业务用例
+│   │       ├── identity-router.ts  /api/v1/identity
+│   │       ├── admin-router.ts     /api/v1/admin（需超管权限）
+│   │       ├── service.ts     登录/资料/管理端业务用例
 │   │       ├── repository.ts  MySQL 数据访问
+│   │       ├── policies.ts    权限判定与 requirePermission 中间件
 │   │       ├── token.ts       JWT 签发与校验
 │   │       └── password.ts    bcrypt 校验
 │   ├── scripts/seed-dev.ts    本地开发种子数据
@@ -94,7 +97,15 @@ pnpm backend:dev          # http://localhost:3000
 ```
 
 种子脚本可重复执行：企业、部门、角色、员工按唯一键复用，密码会被重置为
-`SEED_ADMIN_PASSWORD` 的当前值。
+`SEED_ADMIN_PASSWORD` 的当前值。脚本会创建两类演示账号（密码相同）：
+
+| 账号 | 所属公司 | 用途 |
+| --- | --- | --- |
+| `admin` | `demo`（演示企业） | 公司管理员，持有 `system.employee.manage`，只能管理本企业 |
+| `superadmin` | `platform`（平台管理，虚拟公司） | 平台超级管理员，持有 `system.super_admin`，可跨公司管理 |
+
+同时幂等创建/修复权限码 `system.employee.manage`、`system.super_admin`，
+以及对应角色关联；上一版种子遗留在演示公司的 `super_admin` 角色分配会被清理。
 
 ## API
 
@@ -113,9 +124,17 @@ pnpm backend:dev          # http://localhost:3000
 | PATCH | `/api/v1/auth/profile` | 是 | 修改当前用户可自助编辑的资料（姓名/职位/邮箱/手机号） |
 | GET | `/api/v1/identity/directory` | 是 | 企业部门与通讯录成员 |
 | GET | `/api/v1/identity/attendance` | 是 | 当前用户在业务时区内的当月考勤 |
+| GET | `/api/v1/admin/employee-options` | 是 + 员工管理 | 可访问公司 + 所选公司的部门/职位/角色选项 |
+| GET | `/api/v1/admin/users` | 是 + 员工管理 | 员工分页列表，支持公司/部门/职位/状态/关键字筛选 |
+| POST | `/api/v1/admin/users` | 是 + 员工管理 | 新建员工（含初始密码、部门与角色） |
+| PATCH | `/api/v1/admin/users/:id` | 是 + 员工管理 | 更新员工（用户名/工号不可改） |
+| DELETE | `/api/v1/admin/users/:id` | 是 + 员工管理 | 软删除员工（禁止删除自己/平台最后一个超管） |
+| GET | `/api/v1/admin/roles` | 是 + 员工管理 | 指定公司的角色、成员数、权限与权限目录 |
 
+“员工管理”权限为 `system.super_admin` 或 `system.employee.manage` 任一。
 受保护接口使用 `Authorization: Bearer <token>`。错误响应包含稳定错误码：
-`40000` 参数不合法、`40100` 登录失效、`40101` 凭证错误、`40400` 不存在、
+`40000` 参数不合法、`40100` 登录失效、`40101` 凭证错误、`40300` 无权限、
+`40400` 不存在、`40901` 邮箱冲突、`40902` 用户名冲突、`40903` 工号冲突、
 `50000` 内部错误、`50300` 依赖不可用。
 
 ## 认证与租户说明
@@ -130,6 +149,25 @@ pnpm backend:dev          # http://localhost:3000
   不得信任前端传入的租户 ID。
 - 密码使用 bcrypt（cost 12）校验，数据库只保存哈希。
 
+### 角色与权限
+
+- 采用现有 RBAC 表：`roles`（租户内角色）、`permissions`（全局权限码）、
+  `employee_roles`、`role_permissions`。
+- `GET /auth/profile` 与登录响应中的 `UserProfile.permissions` 由角色实时
+  查询得到；不把权限写入 JWT，避免权限变更后在令牌有效期内仍然生效。
+- 超级管理员角色 `super_admin` 持有 `system.super_admin`。该权限码是通配权限：
+  持有它即拥有全部权限，后续新增权限码无需为超管重复授权。
+- 平台公司（`companies.company_code = 'platform'`）是虚拟公司：只有该公司的
+  员工同时持有 `system.super_admin` 时才可跨公司查询/管理；其他公司的
+  `system.super_admin` 仍只能在本企业内生效。
+- 公司管理员通过 `system.employee.manage` 管理本企业员工；服务层会强制把
+  `tenant_id` 固定为登录上下文中的公司，越权传入其他公司 ID 返回 `40300`。
+- 授权由后端强制执行：`createRequireAnyPermission(service)` 每次请求按
+  `tenant_id + employee_id` 读取权限，无权限返回 `40300`。前端隐藏菜单或路由
+  只是体验优化，不构成授权。
+- 员工删除为软删除：写 `deleted_at` 并置 `status='disabled'`，保留部门/角色/
+  凭据与历史记录；用户名、邮箱、工号仍被唯一键占用。
+
 ## 测试
 
 ```bash
@@ -138,7 +176,9 @@ pnpm backend:test
 ```
 
 当前覆盖：配置优先级与非法配置、JWT 签发/校验、登录成功与失败路径、
-资料角色映射、认证中间件、统一信封、请求 ID、404/非法 JSON、CORS。
+资料角色映射（含超管优先级）、权限读取、员工管理范围（平台跨公司/公司管理员
+锁定本企业/越权 403）、员工创建与冲突映射、自删与最后超管保护、管理端角色
+总览、认证/授权中间件（401/403/200）、统一信封、请求 ID、404/非法 JSON、CORS。
 
 ## 前端联调
 
@@ -150,9 +190,10 @@ pnpm backend:test
 pnpm frontend:dev   # 或进入 frontend 执行 pnpm dev
 ```
 
-登录使用种子账号（`admin` + `.env` 中的 `SEED_ADMIN_PASSWORD`）。当前只有
-identity 接口已实现，任务、审批、知识库、公告等页面会暂时返回 404，后续
-模块逐个补齐。
+登录使用种子账号（`admin` 或 `superadmin`，密码为 `.env` 中的
+`SEED_ADMIN_PASSWORD`）。`superadmin` 可跨公司管理员工，`admin` 只能管理演示
+企业。当前只有 identity 接口已实现，任务、审批、知识库、公告等页面会暂时返回
+404，后续模块逐个补齐。
 
 ## 下一步
 

@@ -1,12 +1,14 @@
 /**
- * 路由表。导航由全局左侧面板（layouts/components/AppPanel.vue）承担，
- * 面板区块直接引用模块公开组件，路由不再参与菜单推导。
+ * 静态路由表（登录、工作台与所有登录用户可访问的页面）。
+ * 导航由全局左侧面板（layouts/components/AppPanel.vue）承担，面板区块直接
+ * 引用模块公开组件；需要权限的路由见 permission-routes.ts，登录后动态挂载。
  *
  * meta 约定（见 nav-meta.ts）：titleKey 页面标题 / icon 图标 /
- * requiresAuth（默认 true）/ fluid 主区全幅模式（对话等应用型视图）。
+ * requiresAuth（默认 true）/ fluid 主区全幅模式 / permission 所需权限码。
  */
 import type { RouteRecordRaw } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
+import ForbiddenView from '@/app/views/ForbiddenView.vue'
 import NotFoundView from '@/app/views/NotFoundView.vue'
 import PlaceholderView from '@/app/views/PlaceholderView.vue'
 import { DashboardView } from '@/modules/dashboard'
@@ -30,6 +32,7 @@ export const routes: RouteRecordRaw[] = [
   },
   {
     path: '/',
+    name: 'main',
     component: MainLayout,
     redirect: { name: 'dashboard' },
     children: [
@@ -100,6 +103,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'nav.announcements', icon: 'announcement' },
       },
     ],
+  },
+  {
+    path: '/forbidden',
+    name: 'forbidden',
+    component: ForbiddenView,
+    meta: { requiresAuth: true, titleKey: 'nav.forbidden.title' },
   },
   {
     path: '/:pathMatch(.*)*',

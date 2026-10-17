@@ -41,6 +41,7 @@ export default {
     emailInvalid: 'Please enter a valid email address',
   },
   role: {
+    super_admin: 'Super Admin',
     admin: 'Administrator',
     employee: 'Employee',
   },

@@ -5,6 +5,7 @@
 export type {
   LoginPayload,
   LoginResult,
+  PermissionCodeValue,
   ProfileUpdate,
   SystemRoleCode as RoleCode,
   UserProfile,

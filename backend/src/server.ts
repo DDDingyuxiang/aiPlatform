@@ -3,12 +3,14 @@ import { loadAppConfig } from './config/index.js'
 import { loadEnvFile } from './config/env.js'
 import { createDatabasePool, pingDatabase } from './infra/db.js'
 import {
+  createAdminRouter,
   createAuthMiddleware,
   createAuthRouter,
   createBcryptPasswordVerifier,
   createIdentityRouter,
   createIdentityService,
   createMySqlIdentityRepository,
+  createRequireAnyPermission,
   createTokenService,
 } from './modules/identity/index.js'
 import { createLogger } from './shared/logger.js'
@@ -34,12 +36,19 @@ async function main(): Promise<void> {
     timezone: config.timezone,
   })
   const requireAuth = createAuthMiddleware(tokens)
+  const requireAnyPermission = createRequireAnyPermission(identityService)
   const authRouter = createAuthRouter({ service: identityService, requireAuth })
   const identityRouter = createIdentityRouter({ service: identityService, requireAuth })
+  const adminRouter = createAdminRouter({
+    service: identityService,
+    requireAuth,
+    requireAnyPermission,
+  })
 
   const app = createApp({
     authRouter,
     identityRouter,
+    adminRouter,
     healthCheck: () => pingDatabase(pool),
     corsOrigins: config.corsOrigins,
     logger,

@@ -84,5 +84,9 @@ VECTOR_SIZE=<与 embedding_profiles.dimension 一致的值> ./create_collection.
 Redis 只承担缓存、限流、短期状态和队列职责，不作为权威业务数据源，本目录
 不提供 Redis 结构脚本。
 
-`permissions` 等基础数据的初始化（种子数据）待权限码规范确定后单独提供，
-不与 DDL 混在一起。
+`permissions` 等基础数据不与 DDL 混在一起：当前由
+[`backend/src/scripts/seed-dev.ts`](../../backend/src/scripts/seed-dev.ts)
+幂等写入 `system.super_admin`、`system.employee.manage` 两个权限码及对应角色
+关联，并创建虚拟平台公司 `platform`、平台超管账号 `superadmin` 与演示公司
+管理员账号 `admin`。后续权限码规范扩展时，继续通过种子/迁移数据维护，不修改
+表结构。

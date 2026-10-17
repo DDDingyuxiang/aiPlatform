@@ -11,8 +11,10 @@
 | 模块 | 内容 |
 | --- | --- |
 | `common` | 响应信封、ID、时间、日期、月份、分页 |
-| `auth` | 登录请求/响应、当前用户资料、个人资料修改 |
-| `identity` | 部门、通讯录成员、员工 CRUD、部门 CRUD |
+| `permissions` | 权限码常量（纯值，无 Zod，供前端经子路径引用） |
+| `auth` | 登录请求/响应、当前用户资料（含权限码）、个人资料修改 |
+| `identity` | 部门、通讯录成员、员工 CRUD、部门 CRUD、角色与权限码 |
+| `admin` | 管理端员工分页/筛选/增删改查、公司/部门/角色选项、角色权限总览 |
 | `attendance` | 月度考勤、考勤记录 CRUD |
 | `workflows` | 审批单、审批类型与状态、发起与审批决策 |
 
@@ -22,7 +24,12 @@
 - 对外 ID 统一为字符串；员工 ID 使用 `employees.public_id`（ULID）。
 - 时间使用带时区的 ISO 8601 字符串（UTC），日期使用 `YYYY-MM-DD`，月份使用 `YYYY-MM`。
 - 可空字段在契约中显式声明 `.nullable()`；首页展示用字段（`position`、`phone`、`department`）由后端将空值归一化为空字符串。
-- `Employee.roles` 支持多个角色代码（包括企业自定义角色）；`UserProfile.role` 是单个系统角色（`admin` / `employee`），由后端按业务规则选取。
+- `Employee.roles` 支持多个角色代码（包括企业自定义角色）；`UserProfile.role` 是单个系统角色（`super_admin` / `admin` / `employee`），由后端按优先级选取。
+- `UserProfile.permissions` 是角色授予的权限码数组（来自 `role_permissions`）；`system.super_admin` 在前后端均视为通配权限。
+- 员工管理入口要求 `system.super_admin` 或 `system.employee.manage` 任一；平台公司的超管可跨公司，公司管理员只能操作当前企业，范围由后端强制校验。
+- 管理端员工列表为分页结构（`items/total/page/pageSize`），查询支持 `companyId/departmentId/position/status/keyword`。
+- 新建员工必须携带 `initialPassword`（至少 8 位，仅写入凭据表，不回显）；更新不允许修改 `username/employeeNo`。
+- 前端如需引用权限码常量，使用 `@aiplatform/contracts/permissions` 子路径，避免把 Zod 运行时打包进浏览器。
 - 通讯录 `Member` 要求员工已有主部门；未归属部门的员工只在员工 CRUD 中出现，不进入通讯录。
 - 发起审批不传流程定义与审批人：后端按 `type` 选择当前启用的流程定义版本，并展开审批节点。
 - `ApprovalStatus` 只有 `pending` / `approved` / `rejected`；节点另有 `skipped`（或签未执行、会签被驳回后的其余审批人），不属于单据终态。
@@ -42,6 +49,9 @@
 | `departmentId` | `departments.id`（字符串化） |
 | `department` | `departments.name`（经 `employee_department_memberships`） |
 | `role` / `roles` | `roles.code`（经 `employee_roles`） |
+| `permissions` | `permissions.code`（经 `employee_roles → role_permissions`） |
+| `company.id` | `companies.public_id` |
+| `company.code` / `company.name` | `companies.company_code` / `companies.name` |
 | `workDate` | `attendance_records.work_date` |
 | `status`（考勤） | `attendance_records.status` |
 | `checkInAt` / `checkOutAt` | `attendance_records.check_in_at` / `check_out_at` |
@@ -94,11 +104,14 @@ Vue 前端示例：
 
 ```ts
 import type { UserProfile } from '@aiplatform/contracts'
+import { SUPER_ADMIN_PERMISSION } from '@aiplatform/contracts/permissions'
 
 const user: UserProfile = await authApi.profile()
+const canManageUsers = user.permissions.includes(SUPER_ADMIN_PERMISSION)
 ```
 
-前端目前只引用类型（`import type`），不会把 Zod 打包进浏览器；如后续需要运行时校验，可直接导入对应 schema。
+前端契约仅引用类型（`import type`），不会把 Zod 打包进浏览器；权限码等纯值常量
+经 `/permissions` 子路径引用。
 
 ## 修改流程
 

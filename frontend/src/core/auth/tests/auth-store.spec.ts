@@ -6,6 +6,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
+import {
+  EMPLOYEE_MANAGE_PERMISSION,
+  SUPER_ADMIN_PERMISSION,
+} from '@aiplatform/contracts/permissions'
 import { useAuthStore } from '@/core/auth/store'
 import { clearToken, setToken } from '@/core/auth/token'
 import '@/core/auth/mock'
@@ -92,5 +96,51 @@ describe('auth store', () => {
     expect(auth.user?.email).toBe('lisi-new@example.com')
     expect(auth.user?.phone).toBe('')
     expect(JSON.parse(localStorage.getItem('app.auth.user') ?? '{}').name).toBe('李思思')
+  })
+
+  it('按权限码判断访问能力，超管权限作为通配', async () => {
+    const employee = useAuthStore(createPinia())
+    const employeeLogin = employee.login({ username: 'lisi', password: '123456', remember: true })
+    await vi.advanceTimersByTimeAsync(500)
+    await employeeLogin
+
+    expect(employee.permissions).toEqual([])
+    expect(employee.hasPermission(SUPER_ADMIN_PERMISSION)).toBe(false)
+    expect(employee.hasAnyPermission([SUPER_ADMIN_PERMISSION, EMPLOYEE_MANAGE_PERMISSION])).toBe(
+      false,
+    )
+    // 未声明权限要求的入口对所有登录用户开放
+    expect(employee.hasPermission()).toBe(true)
+    expect(employee.hasAnyPermission()).toBe(true)
+
+    const companyAdmin = useAuthStore(createPinia())
+    const adminLogin = companyAdmin.login({
+      username: 'admin',
+      password: '123456',
+      remember: true,
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    await adminLogin
+
+    expect(companyAdmin.permissions).toEqual([EMPLOYEE_MANAGE_PERMISSION])
+    expect(companyAdmin.hasPermission(EMPLOYEE_MANAGE_PERMISSION)).toBe(true)
+    expect(companyAdmin.hasPermission(SUPER_ADMIN_PERMISSION)).toBe(false)
+    expect(
+      companyAdmin.hasAnyPermission([SUPER_ADMIN_PERMISSION, EMPLOYEE_MANAGE_PERMISSION]),
+    ).toBe(true)
+
+    const superAdmin = useAuthStore(createPinia())
+    const superAdminLogin = superAdmin.login({
+      username: 'superadmin',
+      password: '123456',
+      remember: true,
+    })
+    await vi.advanceTimersByTimeAsync(500)
+    await superAdminLogin
+
+    expect(superAdmin.permissions).toEqual([SUPER_ADMIN_PERMISSION])
+    expect(superAdmin.hasPermission(SUPER_ADMIN_PERMISSION)).toBe(true)
+    // 超管权限视为拥有后续任意的权限码
+    expect(superAdmin.hasPermission('user.manage')).toBe(true)
   })
 })

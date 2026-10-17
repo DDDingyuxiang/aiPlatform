@@ -18,5 +18,6 @@ export async function registerMocks(): Promise<void> {
     import('@/modules/knowledge/mock'),
     import('@/modules/analytics/mock'),
     import('@/modules/announcements/mock'),
+    import('@/modules/system/mock'),
   ])
 }

@@ -2,14 +2,17 @@
 /**
  * 全局左侧面板：应用唯一的左侧导航（说明.md · 前端模块规范）。
  * 区块顺序：个人信息（含考勤）→ 对话 / 成员 / 任务 / 知识库 / 公告（模块公开组件）
- *          → 审批 / 分析（入口链接，后续批次深入）。
+ *          → 路由入口链接（经营分析、系统管理等，由 app/navigation.ts 按权限过滤）。
  * 移动端（<768px）收入抽屉，由 preferences.mobileNavOpen 控制。
  */
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import Icon from '@/shared/components/Icon.vue'
 import PanelSection from './PanelSection.vue'
+import { panelLinks } from '@/app/navigation'
 import { appConfig } from '@/core/config'
+import { useAuthStore } from '@/core/auth/store'
 import { usePreferencesStore } from '@/core/preferences/store'
 import { useBreakpoint } from '@/shared/composables/useBreakpoint'
 import { MemberDirectory, ProfileCard } from '@/modules/identity'
@@ -22,11 +25,17 @@ import { AnnouncementSection, useAnnouncementsStore } from '@/modules/announceme
 const { t } = useI18n()
 const route = useRoute()
 const preferences = usePreferencesStore()
+const auth = useAuthStore()
 const { isMobile } = useBreakpoint()
 const chat = useChatStore()
 const tasks = useTasksStore()
 const workflows = useWorkflowsStore()
 const announcements = useAnnouncementsStore()
+
+/** 按当前身份权限过滤路由入口；富区块保持原样 */
+const visiblePanelLinks = computed(() =>
+  panelLinks.filter((link) => auth.hasAnyPermission(link.permissions)),
+)
 
 /** 入口链接的当前页高亮 */
 function isActive(prefix: string): boolean {
@@ -102,13 +111,15 @@ function isActive(prefix: string): boolean {
       </PanelSection>
 
       <RouterLink
+        v-for="link in visiblePanelLinks"
+        :key="link.to"
         class="panel__link-card"
-        :class="{ 'panel__link-card--active': isActive('/analytics') }"
-        to="/analytics"
+        :class="{ 'panel__link-card--active': isActive(link.to) }"
+        :to="link.to"
         @click="preferences.closeMobileNav()"
       >
-        <Icon name="analytics" :size="16" />
-        <span class="panel__link-label">{{ t('nav.analytics') }}</span>
+        <Icon :name="link.icon" :size="16" />
+        <span class="panel__link-label">{{ t(link.titleKey) }}</span>
         <Icon name="chevron-right" :size="14" class="panel__link-arrow" />
       </RouterLink>
 

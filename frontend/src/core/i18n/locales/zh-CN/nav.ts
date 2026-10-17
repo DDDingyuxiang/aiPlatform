@@ -9,10 +9,16 @@ export default {
   analytics: '经营分析',
   announcements: '公告通知',
   members: '成员',
+  systemUsers: '员工管理',
   backHome: '返回工作台',
   notFound: {
     title: '页面不存在',
     desc: '您访问的页面不存在或已被移动，请检查地址后重试。',
+    back: '返回工作台',
+  },
+  forbidden: {
+    title: '无权访问',
+    desc: '当前账号没有访问该页面的权限，如需开通请联系超级管理员。',
     back: '返回工作台',
   },
   placeholder: {

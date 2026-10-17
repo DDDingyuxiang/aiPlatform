@@ -1,12 +1,16 @@
 /**
  * 认证状态（Pinia）。
  *
- * 安全说明：前端的登录态与角色只用于界面展示与路由引导；
+ * 安全说明：前端的登录态、角色与权限只用于界面展示与路由引导；
  * 真正的权限校验由后端强制执行（见 说明.md · 安全规范）。
  */
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { authApi } from './api'
+import {
+  hasAnyPermission as checkAnyPermission,
+  hasPermission as checkPermission,
+} from './permissions'
 import { clearToken, getToken, setToken } from './token'
 import type { LoginPayload, ProfileUpdate, RoleCode, UserProfile } from './types'
 
@@ -33,6 +37,8 @@ export const useAuthStore = defineStore('auth', () => {
     const hasUser = !!user.value
     return hasToken && hasUser
   })
+
+  const permissions = computed(() => user.value?.permissions ?? [])
 
   function cacheUser(profile: UserProfile | null): void {
     if (profile) localStorage.setItem(USER_CACHE_KEY, JSON.stringify(profile))
@@ -92,14 +98,27 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value?.role === role
   }
 
+  /** 未传 required 表示仅要求已登录；超管权限视为通配 */
+  function hasPermission(required?: string): boolean {
+    return checkPermission(permissions.value, required)
+  }
+
+  /** 任一权限满足即可（用于同时开放给平台超管与公司管理员的入口） */
+  function hasAnyPermission(required?: readonly string[]): boolean {
+    return checkAnyPermission(permissions.value, required)
+  }
+
   return {
     user,
     loggingIn,
     isAuthenticated,
+    permissions,
     login,
     logout,
     refreshProfile,
     updateProfile,
     hasRole,
+    hasPermission,
+    hasAnyPermission,
   }
 })

@@ -1,6 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  adminEmployeeCreateSchema,
+  adminEmployeeOptionsSchema,
+  adminEmployeePageSchema,
+  adminEmployeeUpdateSchema,
+  adminRolesResultSchema,
   approvalItemSchema,
   attendanceResultSchema,
   createApprovalPayloadSchema,
@@ -17,6 +22,7 @@ const profile = {
   username: 'admin',
   name: '王立',
   role: 'admin',
+  permissions: ['system.super_admin'],
   employeeId: 'E1001',
   position: '数字化平台主管',
   department: '综合管理部',
@@ -35,6 +41,95 @@ test('用户资料字段与首页个人卡片一致', () => {
 
 test('用户资料的 role 只接受系统角色', () => {
   assert.equal(userProfileSchema.safeParse({ ...profile, role: 'finance' }).success, false)
+  assert.equal(userProfileSchema.safeParse({ ...profile, role: 'super_admin' }).success, true)
+})
+
+test('用户资料必须携带权限码数组', () => {
+  assert.equal(userProfileSchema.parse(profile).permissions[0], 'system.super_admin')
+  assert.equal(userProfileSchema.safeParse({ ...profile, permissions: undefined }).success, false)
+})
+
+const company = {
+  id: '01J00000000000000000000009',
+  code: 'demo',
+  name: '演示企业',
+  status: 'active',
+}
+
+const employee = {
+  id: profile.id,
+  company,
+  username: profile.username,
+  employeeId: profile.employeeId,
+  name: profile.name,
+  position: profile.position,
+  phone: profile.phone,
+  email: profile.email,
+  departmentId: '10',
+  department: '综合管理部',
+  roles: [{ code: 'admin', name: '管理员' }],
+  status: 'active',
+  createdAt: '2026-10-17T00:00:00Z',
+  updatedAt: '2026-10-17T00:00:00Z',
+}
+
+test('管理端员工分页与选项契约', () => {
+  const page = adminEmployeePageSchema.parse({
+    items: [employee],
+    total: 1,
+    page: 1,
+    pageSize: 20,
+  })
+  assert.equal(page.items[0].company.code, 'demo')
+
+  const options = adminEmployeeOptionsSchema.parse({
+    companies: [company],
+    departments: [{ id: '10', name: '综合管理部' }],
+    positions: ['数字化平台主管'],
+    roles: [{ code: 'admin', name: '管理员' }],
+  })
+  assert.equal(options.departments[0].name, '综合管理部')
+})
+
+test('新建员工必须提供初始密码，更新禁止修改用户名/工号', () => {
+  const payload = {
+    username: 'zhangsan',
+    employeeNo: 'E2001',
+    email: 'zhangsan@example.com',
+    name: '张三',
+    departmentId: '10',
+    roleCodes: ['employee'],
+    initialPassword: '12345678',
+  }
+  assert.equal(adminEmployeeCreateSchema.safeParse(payload).success, true)
+  assert.equal(
+    adminEmployeeCreateSchema.safeParse({ ...payload, initialPassword: '123' }).success,
+    false,
+  )
+  assert.equal(
+    adminEmployeeUpdateSchema.safeParse({ status: 'disabled' }).success,
+    true,
+  )
+  assert.equal(
+    adminEmployeeUpdateSchema.safeParse({ username: 'other' }).success,
+    false,
+  )
+})
+
+test('管理端角色总览契约', () => {
+  const roles = adminRolesResultSchema.parse({
+    roles: [
+      {
+        code: 'super_admin',
+        name: '超级管理员',
+        description: '',
+        memberCount: 1,
+        permissions: ['system.super_admin'],
+      },
+    ],
+    permissions: [{ code: 'system.super_admin', description: '超级管理员权限' }],
+  })
+  assert.equal(roles.roles[0].memberCount, 1)
 })
 
 test('员工角色支持企业自定义角色代码', () => {

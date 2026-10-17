@@ -5,6 +5,7 @@
  * 注意：此守卫只做前端引导，接口权限由后端强制校验。
  */
 import type { Router } from 'vue-router'
+import { syncPermissionRoutes } from '@/app/router/permission-routes'
 import { appConfig } from '@/core/config'
 import { translate } from '@/core/i18n'
 import { useAuthStore } from './store'
@@ -23,6 +24,23 @@ export function registerAuthGuard(router: Router): void {
     if (to.name === 'login' && auth.isAuthenticated) {
       return { name: 'dashboard' }
     }
+
+    if (auth.isAuthenticated) {
+      // 首次访问动态路由时，to 可能已匹配到 404；挂载后按原地址重试一次
+      const changed = syncPermissionRoutes(router, auth.permissions)
+      if (changed && to.name === 'not-found') {
+        const resolved = router.resolve(to.fullPath)
+        if (resolved.name !== 'not-found') {
+          return { path: to.fullPath, replace: true }
+        }
+      }
+
+      // 路由级兜底：动态路由已按权限注册，此处防御残留路由或权限瞬时变化
+      if (to.meta.permissions && !auth.hasAnyPermission(to.meta.permissions)) {
+        return { name: 'forbidden' }
+      }
+    }
+
     return true
   })
 

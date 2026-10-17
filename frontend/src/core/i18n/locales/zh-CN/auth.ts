@@ -41,6 +41,7 @@ export default {
     emailInvalid: '请输入合法的邮箱地址',
   },
   role: {
+    super_admin: '超级管理员',
     admin: '系统管理员',
     employee: '普通员工',
   },

@@ -7,7 +7,9 @@
  * - 数据库字段变更时，必须同步本契约与 scripts/database 下的 SQL。
  */
 export * from './common.js'
+export * from './permissions.js'
 export * from './identity.js'
 export * from './auth.js'
+export * from './admin.js'
 export * from './attendance.js'
 export * from './workflows.js'
