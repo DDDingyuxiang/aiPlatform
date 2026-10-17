@@ -50,6 +50,7 @@ const STEP_META: Record<ApprovalStepStatus, { icon: 'check-circle' | 'x-circle' 
   rejected: { icon: 'x-circle', tone: 'danger' },
   active: { icon: 'clock', tone: 'primary' },
   waiting: { icon: 'info', tone: 'neutral' },
+  skipped: { icon: 'info', tone: 'neutral' },
 }
 
 function relative(iso: string): string {

@@ -10,7 +10,8 @@ scripts/database/
 │   ├── 01_identity.sql          企业、组织、员工、考勤与权限
 │   ├── 02_conversations.sql     私聊、群聊与消息
 │   ├── 03_knowledge.sql         知识库、文档与 Embedding 任务
-│   └── 04_tasks_audit_settings.sql  后台任务、审计与系统配置
+│   ├── 04_tasks_audit_settings.sql  后台任务、审计与系统配置
+│   └── 05_workflows.sql         审批流程定义与审批单
 └── qdrant/                      Qdrant collection 初始化（非 SQL）
     ├── README.md
     └── create_collection.sh
@@ -53,7 +54,7 @@ scripts/database/
 ```bash
 mysql -h 127.0.0.1 -u <user> -p < scripts/database/mysql/00_create_database.sql
 
-for file in scripts/database/mysql/0{1,2,3,4}_*.sql; do
+for file in scripts/database/mysql/0{1,2,3,4,5}_*.sql; do
   mysql -h 127.0.0.1 -u <user> -p ai_platform < "$file"
 done
 ```
