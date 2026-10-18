@@ -35,6 +35,18 @@ export interface LoginCandidate {
   passwordHash: string
 }
 
+/**
+ * 服务端判定的授权快照。
+ *
+ * 功能权限（permissions）回答“能使用哪些功能”；
+ * 跨租户管理资格（canManageAcrossTenants）只能由平台公司的超级管理员获得，
+ * 两者不可互相推导，尤其是不能仅凭 system.super_admin 推断可跨公司操作。
+ */
+export interface Authorization {
+  permissions: string[]
+  canManageAcrossTenants: boolean
+}
+
 /** 员工资料及其主部门、角色代码 */
 export interface ProfileRecord {
   tenantId: string
@@ -104,6 +116,24 @@ export class DuplicateEmployeeFieldError extends Error {
     this.name = 'DuplicateEmployeeFieldError'
     this.field = field
   }
+}
+
+/** 事务内校验发现本次修改会移除平台最后一个可用超级管理员 */
+export class LastActiveSuperAdminError extends Error {
+  constructor() {
+    super('不能移除平台最后一个超级管理员')
+    this.name = 'LastActiveSuperAdminError'
+  }
+}
+
+/**
+ * 管理端员工写操作的附加约束。
+ *
+ * protectLastActiveSuperAdmin：在写事务内以平台企业行锁串行化“移除超管”操作，
+ * 并在同一事务中完成剩余超管数量校验与写入，避免并发请求同时通过检查。
+ */
+export interface AdminEmployeeMutationOptions {
+  protectLastActiveSuperAdmin?: boolean
 }
 
 /** 公司（租户）记录；tenantId 为内部 ID，不向前端暴露 */
@@ -230,9 +260,13 @@ export interface IdentityRepository {
     tenantId: string,
     employeeId: string,
     changes: AdminEmployeeUpdateRecord,
+    options?: AdminEmployeeMutationOptions,
   ): Promise<void>
-  softDeleteAdminEmployee(tenantId: string, employeeId: string): Promise<void>
-  countActiveSuperAdmins(tenantId: string, excludeEmployeeId: string): Promise<number>
+  softDeleteAdminEmployee(
+    tenantId: string,
+    employeeId: string,
+    options?: AdminEmployeeMutationOptions,
+  ): Promise<void>
 
   listAdminRoles(tenantId: string): Promise<AdminRoleRecord[]>
   listPermissions(): Promise<PermissionRecord[]>
@@ -265,8 +299,13 @@ export interface IdentityService {
   attendance(auth: AuthContext): Promise<AttendanceResult>
   /** 修改当前用户可自助编辑的资料，返回更新后的完整资料 */
   updateProfile(auth: AuthContext, payload: ProfileUpdate): Promise<UserProfile>
-  /** 当前身份持有的权限码（供授权中间件使用） */
+  /** 当前身份持有的权限码（供功能权限中间件使用） */
   permissions(auth: AuthContext): Promise<string[]>
+  /**
+   * 当前身份的服务端授权快照：功能权限 + 跨租户管理资格。
+   * 资格以数据库中的角色权限和平台公司归属为准，不信任令牌中的任何权限声明。
+   */
+  authorization(auth: AuthContext): Promise<Authorization>
 
   /** 管理端员工选项：公司 + 所选公司的部门/职位/角色 */
   employeeOptions(auth: AuthContext, companyPublicId?: string): Promise<AdminEmployeeOptions>

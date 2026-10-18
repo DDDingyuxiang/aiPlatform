@@ -1,8 +1,5 @@
 import { ulid } from 'ulid'
-import {
-  EMPLOYEE_MANAGE_PERMISSION,
-  SUPER_ADMIN_PERMISSION,
-} from '@aiplatform/contracts'
+import { EMPLOYEE_MANAGE_PERMISSION } from '@aiplatform/contracts'
 import type {
   AdminEmployee,
   AdminEmployeeCreate,
@@ -26,11 +23,14 @@ import type { Logger } from '../../shared/logger.js'
 import { resolveMonthRange } from '../../shared/month-range.js'
 import { PLATFORM_COMPANY_CODE } from './constants.js'
 import { hashPassword } from './password.js'
+import { hasCrossTenantAccess, hasPermission } from './policies.js'
 import {
   DuplicateEmailError,
   DuplicateEmployeeFieldError,
+  LastActiveSuperAdminError,
   type AdminEmployeeRecord,
   type AuthContext,
+  type Authorization,
   type CompanyRecord,
   type IdentityRepository,
   type IdentityService,
@@ -108,8 +108,15 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
     return toUserProfile(record)
   }
 
-  /** 判定管理端员工操作范围：平台超管跨公司，其余只能操作本企业 */
-  async function resolveEmployeeScope(auth: AuthContext): Promise<EmployeeScope> {
+  /**
+   * 从可信登录上下文与数据库记录解析授权快照。
+   *
+   * 功能权限与跨租户资格分开计算：前者来自角色的权限码，后者还要求
+   * 登录身份属于平台公司。任何前端传入的租户/权限信息都不参与判定。
+   */
+  async function resolveAuthorization(
+    auth: AuthContext,
+  ): Promise<Authorization & { platformTenantId: string }> {
     const record = await repository.findProfile(auth.tenantId, auth.employeeId)
     if (!record || record.status !== 'active') throw unauthorized()
 
@@ -118,15 +125,37 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
       throw new AppError(ErrorCode.INTERNAL, '平台公司尚未初始化，请先执行种子脚本', 500)
     }
 
-    const hasSuperAdmin = record.permissionCodes.includes(SUPER_ADMIN_PERMISSION)
-    const hasEmployeeManage = record.permissionCodes.includes(EMPLOYEE_MANAGE_PERMISSION)
-    if (!hasSuperAdmin && !hasEmployeeManage) throw forbidden()
+    return {
+      permissions: record.permissionCodes,
+      canManageAcrossTenants: hasCrossTenantAccess(
+        record.permissionCodes,
+        auth.tenantId,
+        platformTenantId,
+      ),
+      platformTenantId,
+    }
+  }
 
-    const isPlatform = hasSuperAdmin && auth.tenantId === platformTenantId
+  /**
+   * 判定管理端员工操作范围：平台超管跨公司，其余只能操作本企业。
+   *
+   * 所有管理端服务方法都必须以本函数作为第一步，禁止直接根据通配权限
+   * 推断跨租户能力；新增接口同样必须经过这里或显式的跨租户中间件。
+   */
+  async function resolveEmployeeScope(auth: AuthContext): Promise<EmployeeScope> {
+    const authorization = await resolveAuthorization(auth)
+
+    const hasFunctionalAccess = hasPermission(
+      authorization.permissions,
+      EMPLOYEE_MANAGE_PERMISSION,
+    )
+    if (!hasFunctionalAccess) throw forbidden()
+
+    const isPlatform = authorization.canManageAcrossTenants
     return {
       kind: isPlatform ? 'platform' : 'company',
       tenantId: isPlatform ? null : auth.tenantId,
-      platformTenantId,
+      platformTenantId: authorization.platformTenantId,
     }
   }
 
@@ -180,7 +209,7 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
     tenantId: string,
     roleCodes: string[] | undefined,
     scope: EmployeeScope,
-  ): Promise<{ ids: string[]; hasSuperAdmin: boolean } | undefined> {
+  ): Promise<string[] | undefined> {
     if (roleCodes === undefined) return undefined
 
     const uniqueCodes = [...new Set(roleCodes)]
@@ -191,35 +220,7 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
     if (scope.kind !== 'platform' && roles.some((role) => role.hasSuperAdmin)) {
       throw forbidden('不能授予超级管理员角色')
     }
-    return {
-      ids: roles.map((role) => role.id),
-      hasSuperAdmin: roles.some((role) => role.hasSuperAdmin),
-    }
-  }
-
-  /** 禁止通过改状态/换角色移除平台最后一个超管，避免平台失去管理入口 */
-  async function guardLastSuperAdmin(
-    target: AdminEmployeeRecord,
-    scope: EmployeeScope,
-    next: { status?: string; hasSuperAdmin?: boolean },
-  ): Promise<void> {
-    if (target.tenantId !== scope.platformTenantId) return
-
-    const profile = await repository.findProfile(target.tenantId, target.employeeId)
-    const currentlySuperAdmin =
-      profile?.permissionCodes.includes(SUPER_ADMIN_PERMISSION) ?? false
-    if (!currentlySuperAdmin) return
-
-    const willBeActive =
-      next.status === undefined ? target.status === 'active' : next.status === 'active'
-    const willKeepSuperAdmin = next.hasSuperAdmin === undefined ? true : next.hasSuperAdmin
-    if (willBeActive && willKeepSuperAdmin) return
-
-    const remaining = await repository.countActiveSuperAdmins(
-      scope.platformTenantId,
-      target.employeeId,
-    )
-    if (remaining === 0) throw forbidden('不能移除平台最后一个超级管理员')
+    return roles.map((role) => role.id)
   }
 
   async function loadAdminEmployee(
@@ -347,6 +348,14 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
       return record.permissionCodes
     },
 
+    async authorization(auth: AuthContext): Promise<Authorization> {
+      const authorization = await resolveAuthorization(auth)
+      return {
+        permissions: authorization.permissions,
+        canManageAcrossTenants: authorization.canManageAcrossTenants,
+      }
+    },
+
     async employeeOptions(
       auth: AuthContext,
       companyPublicId?: string,
@@ -427,7 +436,7 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
           position: payload.position ?? null,
           phone: payload.phone ?? null,
           departmentId: payload.departmentId ?? null,
-          roleIds: roles?.ids ?? [],
+          roleIds: roles ?? [],
           passwordHash,
         })
       } catch (error) {
@@ -456,24 +465,34 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
       }
 
       await validateDepartment(target.tenantId, payload.departmentId)
-      const roles = await resolveRoles(target.tenantId, payload.roleCodes, scope)
+      const roleIds = await resolveRoles(target.tenantId, payload.roleCodes, scope)
 
-      await guardLastSuperAdmin(target, scope, {
-        status: payload.status,
-        hasSuperAdmin: roles?.hasSuperAdmin,
-      })
+      // 只有可能移除“在职超管”的修改才需要事务内保护；
+      // 真正的剩余数量校验与写入由仓库层在同一事务、同一把行锁下完成。
+      const protectLastActiveSuperAdmin =
+        target.tenantId === scope.platformTenantId &&
+        (roleIds !== undefined ||
+          (payload.status !== undefined && payload.status !== 'active'))
 
       try {
-        await repository.updateAdminEmployee(target.tenantId, target.employeeId, {
-          name: payload.name,
-          email: payload.email?.toLowerCase(),
-          position: payload.position,
-          phone: payload.phone,
-          departmentId: payload.departmentId,
-          roleIds: roles?.ids,
-          status: payload.status,
-        })
+        await repository.updateAdminEmployee(
+          target.tenantId,
+          target.employeeId,
+          {
+            name: payload.name,
+            email: payload.email?.toLowerCase(),
+            position: payload.position,
+            phone: payload.phone,
+            departmentId: payload.departmentId,
+            roleIds,
+            status: payload.status,
+          },
+          { protectLastActiveSuperAdmin },
+        )
       } catch (error) {
+        if (error instanceof LastActiveSuperAdminError) {
+          throw forbidden('不能移除平台最后一个超级管理员')
+        }
         translateEmployeeError(error)
       }
 
@@ -493,21 +512,16 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
         throw forbidden('不能删除当前登录账号')
       }
 
-      if (target.tenantId === scope.platformTenantId) {
-        const targetProfile = await repository.findProfile(target.tenantId, target.employeeId)
-        const isSuperAdmin =
-          targetProfile?.permissionCodes.includes(SUPER_ADMIN_PERMISSION) ?? false
-
-        if (isSuperAdmin) {
-          const remaining = await repository.countActiveSuperAdmins(
-            scope.platformTenantId,
-            target.employeeId,
-          )
-          if (remaining === 0) throw forbidden('不能删除平台最后一个超级管理员')
+      try {
+        await repository.softDeleteAdminEmployee(target.tenantId, target.employeeId, {
+          protectLastActiveSuperAdmin: target.tenantId === scope.platformTenantId,
+        })
+      } catch (error) {
+        if (error instanceof LastActiveSuperAdminError) {
+          throw forbidden('不能删除平台最后一个超级管理员')
         }
+        throw error
       }
-
-      await repository.softDeleteAdminEmployee(target.tenantId, target.employeeId)
       return { ok: true }
     },
 

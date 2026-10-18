@@ -4,6 +4,7 @@ import { SUPER_ADMIN_PERMISSION } from '@aiplatform/contracts'
 import {
   DuplicateEmailError,
   DuplicateEmployeeFieldError,
+  LastActiveSuperAdminError,
   type AdminEmployeeCreateRecord,
   type AdminEmployeeListQuery,
   type AdminEmployeeRecord,
@@ -106,6 +107,10 @@ interface RoleRefRow extends RowDataPacket {
   code: string
   name: string
   has_super_admin: string | number
+}
+
+interface EmployeeStatusRow extends RowDataPacket {
+  status: string
 }
 
 interface AdminRoleRow extends RowDataPacket {
@@ -332,6 +337,155 @@ async function loadEmployeeRoles(
     rolesByEmployee.set(row.employee_id, roles)
   }
   return rolesByEmployee
+}
+
+/** 员工当前是否通过任一角色持有超级管理员权限 */
+async function employeeHasSuperAdminPermission(
+  connection: PoolConnection,
+  tenantId: string,
+  employeeId: string,
+): Promise<boolean> {
+  const [rows] = await connection.execute<IdRow[]>(
+    `SELECT 1
+       FROM employee_roles er
+       JOIN roles r
+         ON r.tenant_id = er.tenant_id
+        AND r.id = er.role_id
+        AND r.deleted_at IS NULL
+       JOIN role_permissions rp
+         ON rp.role_id = r.id
+       JOIN permissions p
+         ON p.id = rp.permission_id
+      WHERE er.tenant_id = ?
+        AND er.employee_id = ?
+        AND p.code = ?
+      LIMIT 1`,
+    [tenantId, employeeId, SUPER_ADMIN_PERMISSION],
+  )
+  return rows.length > 0
+}
+
+/** 给定的角色 ID 中是否至少有一个授予超级管理员权限 */
+async function roleIdsGrantSuperAdmin(
+  connection: PoolConnection,
+  tenantId: string,
+  roleIds: readonly string[],
+): Promise<boolean> {
+  if (roleIds.length === 0) return false
+
+  const placeholders = roleIds.map(() => '?').join(', ')
+  const [rows] = await connection.execute<IdRow[]>(
+    `SELECT DISTINCT r.id
+       FROM roles r
+       JOIN role_permissions rp
+         ON rp.role_id = r.id
+       JOIN permissions p
+         ON p.id = rp.permission_id
+      WHERE r.tenant_id = ?
+        AND r.id IN (${placeholders})
+        AND r.deleted_at IS NULL
+        AND p.code = ?`,
+    [tenantId, ...roleIds, SUPER_ADMIN_PERMISSION],
+  )
+  return rows.length > 0
+}
+
+interface SuperAdminRemovalIntent {
+  /** 修改后的员工状态；undefined 表示保持不变 */
+  status?: string
+  /** 修改后的角色 ID；undefined 表示不修改角色 */
+  roleIds?: readonly string[]
+  /** 是否为删除操作 */
+  deleting?: boolean
+}
+
+/**
+ * 在写事务内校验本次操作不会移除平台最后一个可用的超级管理员。
+ *
+ * 仅把“计数”和“写入”包进事务并不能消除竞态：两个事务仍可能读到相同的
+ * 剩余数量。这里先对平台企业行执行 SELECT ... FOR UPDATE，把它作为该租户
+ * 超级管理员变更的串行化锁；所有可能移除超管的写路径都必须经过本函数，
+ * 后到的事务会等待前一个事务提交后再计数，从而看到最新的角色/状态。
+ *
+ * 必须在事务内、且在业务写入之前调用，保证锁的获取先于任何快照读取。
+ */
+async function assertSuperAdminRemovalAllowed(
+  connection: PoolConnection,
+  tenantId: string,
+  employeeId: string,
+  next: SuperAdminRemovalIntent,
+): Promise<void> {
+  // 以平台企业行作为租户级互斥锁（InnoDB 行锁，随事务提交/回滚释放）
+  const [companyRows] = await connection.execute<IdRow[]>(
+    `SELECT id
+       FROM companies
+      WHERE id = ?
+        AND deleted_at IS NULL
+      FOR UPDATE`,
+    [tenantId],
+  )
+  if (companyRows.length === 0) {
+    throw new Error('平台企业不存在，无法校验超级管理员约束')
+  }
+
+  const [statusRows] = await connection.execute<EmployeeStatusRow[]>(
+    `SELECT status
+       FROM employees
+      WHERE tenant_id = ?
+        AND id = ?
+        AND deleted_at IS NULL
+      FOR UPDATE`,
+    [tenantId, employeeId],
+  )
+
+  const current = statusRows.at(0)
+  // 目标已不存在：后续写入自然为空操作，无需阻断
+  if (!current) return
+  if (current.status !== 'active') return
+
+  // 所有可能移除超管的角色/状态写入都会先获取上面的企业行锁，因此这里
+  // 读到的权限归属不会与其他移除操作交错；并发的新增授权即使尚未提交，
+  // 也只会让本次校验更保守（宁可误拦，不会误放）。
+  const isSuperAdmin = await employeeHasSuperAdminPermission(
+    connection,
+    tenantId,
+    employeeId,
+  )
+  if (!isSuperAdmin) return
+
+  const nextStatus = next.status ?? current.status
+  const willBeActive = next.deleting ? false : nextStatus === 'active'
+  const willKeepSuperAdmin =
+    next.roleIds === undefined
+      ? true
+      : await roleIdsGrantSuperAdmin(connection, tenantId, next.roleIds)
+  if (willBeActive && willKeepSuperAdmin) return
+
+  // 同一事务内完成剩余数量校验；企业行锁保证没有其他移除操作并发提交
+  const [countRows] = await connection.execute<CountRow[]>(
+    `SELECT COUNT(DISTINCT e.id) AS total
+       FROM employees e
+       JOIN employee_roles er
+         ON er.tenant_id = e.tenant_id
+        AND er.employee_id = e.id
+       JOIN roles r
+         ON r.tenant_id = er.tenant_id
+        AND r.id = er.role_id
+        AND r.deleted_at IS NULL
+       JOIN role_permissions rp
+         ON rp.role_id = r.id
+       JOIN permissions p
+         ON p.id = rp.permission_id
+      WHERE e.tenant_id = ?
+        AND e.deleted_at IS NULL
+        AND e.status = 'active'
+        AND p.code = ?
+        AND e.id <> ?`,
+    [tenantId, SUPER_ADMIN_PERMISSION, employeeId],
+  )
+  if (Number(countRows.at(0)?.total ?? 0) === 0) {
+    throw new LastActiveSuperAdminError()
+  }
 }
 
 /** MySQL 实现：只负责数据访问，不做业务判定 */
@@ -776,9 +930,17 @@ export function createMySqlIdentityRepository(pool: Pool): IdentityRepository {
       }
     },
 
-    async updateAdminEmployee(tenantId, employeeId, changes) {
+    async updateAdminEmployee(tenantId, employeeId, changes, options) {
       try {
         await withTransaction(async (connection) => {
+          // 串行化锁必须在本事务任何其他读取/写入之前获取
+          if (options?.protectLastActiveSuperAdmin) {
+            await assertSuperAdminRemovalAllowed(connection, tenantId, employeeId, {
+              status: changes.status,
+              roleIds: changes.roleIds,
+            })
+          }
+
           const assignments: string[] = []
           const params: SqlParam[] = []
 
@@ -860,42 +1022,26 @@ export function createMySqlIdentityRepository(pool: Pool): IdentityRepository {
       }
     },
 
-    async softDeleteAdminEmployee(tenantId, employeeId) {
-      await pool.execute(
-        `UPDATE employees
-            SET status = 'disabled',
-                deleted_at = UTC_TIMESTAMP(3),
-                updated_at = UTC_TIMESTAMP(3)
-          WHERE tenant_id = ?
-            AND id = ?
-            AND deleted_at IS NULL`,
-        [tenantId, employeeId],
-      )
-    },
+    async softDeleteAdminEmployee(tenantId, employeeId, options) {
+      await withTransaction(async (connection) => {
+        // 删除同样必须与“剩余超管”校验共用同一事务和同一把租户锁
+        if (options?.protectLastActiveSuperAdmin) {
+          await assertSuperAdminRemovalAllowed(connection, tenantId, employeeId, {
+            deleting: true,
+          })
+        }
 
-    async countActiveSuperAdmins(tenantId, excludeEmployeeId) {
-      const [rows] = await pool.execute<CountRow[]>(
-        `SELECT COUNT(DISTINCT e.id) AS total
-           FROM employees e
-           JOIN employee_roles er
-             ON er.tenant_id = e.tenant_id
-            AND er.employee_id = e.id
-           JOIN roles r
-             ON r.tenant_id = er.tenant_id
-            AND r.id = er.role_id
-            AND r.deleted_at IS NULL
-           JOIN role_permissions rp
-             ON rp.role_id = r.id
-           JOIN permissions p
-             ON p.id = rp.permission_id
-          WHERE e.tenant_id = ?
-            AND e.deleted_at IS NULL
-            AND e.status = 'active'
-            AND p.code = ?
-            AND e.id <> ?`,
-        [tenantId, SUPER_ADMIN_PERMISSION, excludeEmployeeId],
-      )
-      return Number(rows.at(0)?.total ?? 0)
+        await connection.execute(
+          `UPDATE employees
+              SET status = 'disabled',
+                  deleted_at = UTC_TIMESTAMP(3),
+                  updated_at = UTC_TIMESTAMP(3)
+            WHERE tenant_id = ?
+              AND id = ?
+              AND deleted_at IS NULL`,
+          [tenantId, employeeId],
+        )
+      })
     },
 
     async listAdminRoles(tenantId) {

@@ -88,6 +88,10 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
       name: payload.name ?? user.name,
     })),
     permissions: vi.fn(async () => granted),
+    authorization: vi.fn(async () => ({
+      permissions: granted,
+      canManageAcrossTenants: false,
+    })),
     employeeOptions: vi.fn(async () => ({
       companies: [],
       departments: [],

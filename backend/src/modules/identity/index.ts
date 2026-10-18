@@ -9,12 +9,15 @@ export { createTokenService } from './token.js'
 export { createBcryptPasswordVerifier, hashPassword } from './password.js'
 export {
   createRequireAnyPermission,
+  createRequireCrossTenantAccess,
   createRequirePermission,
+  hasCrossTenantAccess,
   hasPermission,
 } from './policies.js'
 export { PLATFORM_COMPANY_CODE } from './constants.js'
 export type {
   AuthContext,
+  Authorization,
   IdentityRepository,
   IdentityService,
   PasswordHasher,

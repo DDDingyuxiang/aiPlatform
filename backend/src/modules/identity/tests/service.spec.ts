@@ -8,6 +8,7 @@ import { createIdentityService } from '../service.js'
 import {
   DuplicateEmailError,
   DuplicateEmployeeFieldError,
+  LastActiveSuperAdminError,
   type AdminEmployeeRecord,
   type AdminRoleRecord,
   type AttendanceDayRecord,
@@ -100,11 +101,12 @@ function setup(overrides: {
   rolesByCodes?: RoleRefRecord[]
   positions?: string[]
   departmentExists?: boolean
-  remainingSuperAdmins?: number
   createError?: Error
   now?: Date
   timezone?: string
   updateError?: Error
+  adminUpdateError?: Error
+  adminDeleteError?: Error
 }) {
   const profileRecord = overrides.profile === undefined ? profile : overrides.profile
   const repository: IdentityRepository = {
@@ -144,9 +146,12 @@ function setup(overrides: {
     createAdminEmployee: vi.fn(async () => {
       if (overrides.createError) throw overrides.createError
     }),
-    updateAdminEmployee: vi.fn(async () => {}),
-    softDeleteAdminEmployee: vi.fn(async () => {}),
-    countActiveSuperAdmins: vi.fn(async () => overrides.remainingSuperAdmins ?? 1),
+    updateAdminEmployee: vi.fn(async () => {
+      if (overrides.adminUpdateError) throw overrides.adminUpdateError
+    }),
+    softDeleteAdminEmployee: vi.fn(async () => {
+      if (overrides.adminDeleteError) throw overrides.adminDeleteError
+    }),
 
     listAdminRoles: vi.fn(async () => overrides.adminRoles ?? []),
     listPermissions: vi.fn(async () => overrides.permissionCatalog ?? []),
@@ -306,6 +311,45 @@ describe('identity service employee scope and admin overview', () => {
     roleCodes: ['super_admin'],
     permissionCodes: [SUPER_ADMIN_PERMISSION],
   }
+  const platformTarget: AdminEmployeeRecord = {
+    ...adminEmployee,
+    tenantId: '100',
+    employeeId: '201',
+    publicId: '01J00000000000000000000201',
+    company: platformCompany,
+    roles: [{ code: 'super_admin', name: '超级管理员' }],
+  }
+
+  it('跨租户管理资格只属于平台公司的超级管理员', async () => {
+    const platform = setup({ profile: platformProfile, platformTenantId: '100' })
+    await expect(platform.service.authorization(platformAuth)).resolves.toEqual({
+      permissions: [SUPER_ADMIN_PERMISSION],
+      canManageAcrossTenants: true,
+    })
+
+    // 普通公司内的超管仍有功能权限，但不具备跨租户资格
+    const companySuperAdmin = setup({
+      profile: { ...profile, permissionCodes: [SUPER_ADMIN_PERMISSION] },
+      platformTenantId: '100',
+    })
+    await expect(companySuperAdmin.service.authorization(auth)).resolves.toEqual({
+      permissions: [SUPER_ADMIN_PERMISSION],
+      canManageAcrossTenants: false,
+    })
+  })
+
+  it('非平台公司的超级管理员只能查询本企业，不能借通配权限跨公司', async () => {
+    const { service, repository } = setup({
+      profile: { ...profile, permissionCodes: [SUPER_ADMIN_PERMISSION] },
+      platformTenantId: '100',
+      companies: [demoCompany],
+      adminEmployees: [adminEmployee],
+    })
+
+    await service.adminUsers(auth, { page: 1, pageSize: 20 })
+
+    expect(repository.listAdminEmployees).toHaveBeenCalledWith('1', expect.anything())
+  })
 
   it('公司管理员只按当前租户查询，并归一化可空展示字段', async () => {
     const { service, repository } = setup({
@@ -461,19 +505,55 @@ describe('identity service employee scope and admin overview', () => {
       profile: platformProfile,
       platformTenantId: '100',
       companies: [platformCompany],
-      adminEmployee: {
-        ...adminEmployee,
-        tenantId: '100',
-        employeeId: '201',
-        publicId: '01J00000000000000000000201',
-        company: platformCompany,
-        roles: [{ code: 'super_admin', name: '超级管理员' }],
-      },
-      remainingSuperAdmins: 0,
+      adminEmployee: platformTarget,
+      adminDeleteError: new LastActiveSuperAdminError(),
     })
     await expect(
-      lastSuperAdmin.service.deleteEmployee(platformAuth, '01J00000000000000000000201'),
+      lastSuperAdmin.service.deleteEmployee(platformAuth, platformTarget.publicId),
     ).rejects.toMatchObject({ code: ErrorCode.FORBIDDEN })
+    expect(lastSuperAdmin.repository.softDeleteAdminEmployee).toHaveBeenCalledWith(
+      '100',
+      '201',
+      { protectLastActiveSuperAdmin: true },
+    )
+  })
+
+  it('平台超管停用/改角色时把“最后一名超管”保护交给同一事务处理', async () => {
+    const { service, repository } = setup({
+      profile: platformProfile,
+      platformTenantId: '100',
+      companies: [platformCompany],
+      adminEmployee: platformTarget,
+      adminUpdateError: new LastActiveSuperAdminError(),
+    })
+
+    await expect(
+      service.updateEmployee(platformAuth, platformTarget.publicId, { status: 'disabled' }),
+    ).rejects.toMatchObject({ code: ErrorCode.FORBIDDEN })
+    expect(repository.updateAdminEmployee).toHaveBeenCalledWith(
+      '100',
+      '201',
+      expect.objectContaining({ status: 'disabled' }),
+      { protectLastActiveSuperAdmin: true },
+    )
+  })
+
+  it('不涉及移除超管的修改不开启事务保护', async () => {
+    const { service, repository } = setup({
+      profile: platformProfile,
+      platformTenantId: '100',
+      companies: [platformCompany],
+      adminEmployee: platformTarget,
+    })
+
+    await service.updateEmployee(platformAuth, platformTarget.publicId, { name: '新名字' })
+
+    expect(repository.updateAdminEmployee).toHaveBeenCalledWith(
+      '100',
+      '201',
+      expect.objectContaining({ name: '新名字' }),
+      { protectLastActiveSuperAdmin: false },
+    )
   })
 
   it('角色总览按公司返回成员数、权限码与权限目录', async () => {

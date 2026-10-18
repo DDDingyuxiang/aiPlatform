@@ -21,8 +21,11 @@ export interface AdminRouterOptions {
 /**
  * 管理端接口：/api/v1/admin
  *
- * 平台超管（system.super_admin）可跨公司；公司管理员（system.employee.manage）
- * 只能操作本企业。具体范围由 identity service 再次判定。
+ * 本路由的中间件只校验功能权限（能否使用员工管理功能），不代表可以跨公司。
+ * 实际租户范围由 identity service 的 resolveEmployeeScope 根据可信登录上下文
+ * 与数据库记录逐请求判定：只有平台公司的超级管理员具备跨租户资格。
+ * 新增管理端接口必须继续经过该作用域解析，不能仅凭 system.super_admin
+ * 通配权限直接操作其他租户数据。
  */
 export function createAdminRouter(options: AdminRouterOptions): Router {
   const router = Router()
