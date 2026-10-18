@@ -7,6 +7,7 @@ import { createPinia, type Pinia } from 'pinia'
 import { useAuthStore } from '@/core/auth/store'
 import { clearToken } from '@/core/auth/token'
 import { useChatStore } from '@/modules/chat'
+import { chatApi } from '../api'
 import '@/core/auth/mock'
 import '@/modules/identity/mock'
 import '@/modules/chat/mock'
@@ -36,6 +37,7 @@ describe('chat store', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('登录后加载会话列表（仅包含我参与的会话）', async () => {
@@ -52,7 +54,7 @@ describe('chat store', () => {
     expect(chat.totalUnread).toBe(6)
   })
 
-  it('打开会话后清零未读并加载消息', async () => {
+  it('打开会话后加载消息，停留满足条件后清零未读', async () => {
     await loginAsAdmin()
     const chat = useChatStore(pinia)
     const load = chat.loadConversations()
@@ -65,6 +67,12 @@ describe('chat store', () => {
 
     expect(chat.activeConversation?.name).toBe('李思')
     expect(chat.messagesOf('c-101')).toHaveLength(3)
+    // 仅打开不立即已读，由聊天视图停留 2 秒后调用 markActiveRead
+    expect(chat.totalUnread).toBe(6)
+
+    const markRead = chat.markActiveRead()
+    await flush()
+    await markRead
     expect(chat.totalUnread).toBe(5)
   })
 
@@ -89,6 +97,39 @@ describe('chat store', () => {
     const messages = chat.messagesOf('c-101')
     expect(messages).toHaveLength(5)
     expect(messages[4]?.senderId).not.toBe('u-001')
+  })
+
+  it('同一条消息经 HTTP 响应与 SSE 事件重复到达时只追加一次', async () => {
+    await loginAsAdmin()
+    const chat = useChatStore(pinia)
+    const load = chat.loadConversations()
+    await flush()
+    await load
+    const open = chat.openConversation('c-101')
+    await flush()
+    await open
+
+    const message = {
+      id: 'm-duplicated',
+      conversationId: 'c-101',
+      senderId: 'u-001',
+      content: '去重测试',
+      type: 'text' as const,
+      attachments: [],
+      sentAt: new Date().toISOString(),
+    }
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValue(message)
+
+    const first = chat.sendMessage('去重测试')
+    await flush()
+    await first
+    const second = chat.sendMessage('去重测试')
+    await flush()
+    await second
+
+    expect(
+      chat.messagesOf('c-101').filter((item) => item.id === message.id),
+    ).toHaveLength(1)
   })
 
   it('发起私聊复用已有会话；新的私聊与群聊按规则创建', async () => {

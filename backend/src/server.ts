@@ -2,14 +2,19 @@ import { createApp } from './app.js'
 import { loadAppConfig } from './config/index.js'
 import { loadEnvFile } from './config/env.js'
 import { createDatabasePool, pingDatabase } from './infra/db.js'
+import { createRedisCacheStore } from './infra/cache.js'
+import { createRedisRealtimeBus } from './infra/realtime.js'
+import { closeRedis, createRedisClient, pingRedis } from './infra/redis.js'
 import {
   createAdminRouter,
   createAuthMiddleware,
   createAuthRouter,
   createBcryptPasswordVerifier,
+  createCachedIdentityRepository,
   createIdentityRouter,
   createIdentityService,
   createMySqlIdentityRepository,
+  createRedisSessionStore,
   createRequireAnyPermission,
   createTokenService,
 } from './modules/identity/index.js'
@@ -18,6 +23,7 @@ import {
   createConversationsService,
   createLocalAttachmentStorage,
   createMySqlConversationsRepository,
+  createRedisUnreadStore,
 } from './modules/conversations/index.js'
 import { createLogger } from './shared/logger.js'
 
@@ -29,7 +35,15 @@ async function main(): Promise<void> {
   const pool = createDatabasePool(config.database)
   await pingDatabase(pool)
 
-  const repository = createMySqlIdentityRepository(pool)
+  const redis = createRedisClient(config.redis, logger)
+  await pingRedis(redis)
+
+  const repository = createCachedIdentityRepository(
+    createMySqlIdentityRepository(pool),
+    createRedisCacheStore(redis, logger),
+    { ttlSeconds: config.redis.cacheTtlSeconds },
+  )
+  const sessions = createRedisSessionStore(redis)
   const tokens = createTokenService({
     secret: config.jwtSecret,
     ttlSeconds: config.jwtTtlSeconds,
@@ -38,16 +52,25 @@ async function main(): Promise<void> {
     repository,
     passwords: createBcryptPasswordVerifier(),
     tokens,
+    sessions,
+    sessionTtlSeconds: config.jwtTtlSeconds,
     logger,
     timezone: config.timezone,
   })
+  const realtime = createRedisRealtimeBus(
+    redis,
+    config.redis.channelPrefix,
+    logger,
+  )
   const conversationsService = createConversationsService({
     repository: createMySqlConversationsRepository(pool),
     storage: createLocalAttachmentStorage(config.chat.uploadDir),
+    realtime,
+    unread: createRedisUnreadStore(redis, logger),
     maxUploadBytes: config.chat.maxUploadBytes,
     logger,
   })
-  const requireAuth = createAuthMiddleware(tokens)
+  const requireAuth = createAuthMiddleware(tokens, sessions)
   const requireAnyPermission = createRequireAnyPermission(identityService)
   const authRouter = createAuthRouter({ service: identityService, requireAuth })
   const identityRouter = createIdentityRouter({ service: identityService, requireAuth })
@@ -59,6 +82,8 @@ async function main(): Promise<void> {
   const conversationsRouter = createConversationsRouter({
     service: conversationsService,
     requireAuth,
+    realtime,
+    validateSession: (sessionId) => sessions.exists(sessionId),
     maxUploadBytes: config.chat.maxUploadBytes,
   })
 
@@ -67,7 +92,10 @@ async function main(): Promise<void> {
     identityRouter,
     adminRouter,
     conversationsRouter,
-    healthCheck: () => pingDatabase(pool),
+    healthCheck: async () => {
+      await pingDatabase(pool)
+      await pingRedis(redis)
+    },
     corsOrigins: config.corsOrigins,
     logger,
   })
@@ -88,7 +116,11 @@ async function main(): Promise<void> {
 
     server.close((error) => {
       if (error) logger.error('server.close_failed', { error: error.message })
-      void pool.end().finally(() => process.exit(error ? 1 : 0))
+      void Promise.allSettled([
+        pool.end(),
+        realtime.close(),
+        closeRedis(redis),
+      ]).finally(() => process.exit(error ? 1 : 0))
     })
 
     setTimeout(() => {

@@ -5,7 +5,7 @@
  *          → 路由入口链接（经营分析、系统管理等，由 app/navigation.ts 按权限过滤）。
  * 移动端（<768px）收入抽屉，由 preferences.mobileNavOpen 控制。
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import Icon from '@/shared/components/Icon.vue'
@@ -31,6 +31,14 @@ const chat = useChatStore()
 const tasks = useTasksStore()
 const workflows = useWorkflowsStore()
 const announcements = useAnnouncementsStore()
+
+onMounted(() => {
+  chat.connectRealtime()
+})
+
+onBeforeUnmount(() => {
+  chat.disconnectRealtime()
+})
 
 /** 按当前身份权限过滤路由入口；富区块保持原样 */
 const visiblePanelLinks = computed(() =>

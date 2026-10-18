@@ -6,10 +6,24 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { appConfig } from '@/core/config'
 import { useAuthStore } from '@/core/auth/store'
+import { ApiError, http, type ServerSentEvent } from '@/core/http'
+import { toast } from '@/shared/composables/useToast'
 import { genId } from '@/shared/utils/id'
 import { chatApi } from './api'
 import { pickDemoReply } from './data'
 import type { ChatMessageType, Conversation, Message } from './types'
+
+interface RealtimeEnvelope {
+  type: string
+  payload: {
+    conversationId?: string
+    conversationName?: string
+    message?: Message
+    senderId?: string
+    senderName?: string
+    preview?: string
+  }
+}
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<Conversation[]>([])
@@ -19,6 +33,8 @@ export const useChatStore = defineStore('chat', () => {
   const typingByConversation = ref<Record<string, string | null>>({})
   const sending = ref(false)
   const uploading = ref(false)
+  const realtimeConnected = ref(false)
+  let realtimeController: AbortController | null = null
 
   const sortedConversations = computed(() =>
     [...conversations.value].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
@@ -48,15 +64,28 @@ export const useChatStore = defineStore('chat', () => {
 
   async function openConversation(conversationId: string): Promise<void> {
     activeId.value = conversationId
+
+    // 打开只加载消息；“已读”由消息窗口可见满 2 秒后调用 markActiveRead 完成
+    try {
+      messagesById.value[conversationId] = await chatApi.messages(conversationId)
+    } catch (error) {
+      console.error('[chat] 消息加载失败', error)
+      messagesById.value[conversationId] = []
+    }
+  }
+
+  /** 当前可见会话满足停留条件后清零未读（由聊天视图的 2 秒计时器调用） */
+  async function markActiveRead(): Promise<void> {
+    const conversationId = activeId.value
+    if (!conversationId) return
+
     const conversation = conversations.value.find((item) => item.id === conversationId)
     if (conversation) conversation.unread = 0
-    if (!messagesById.value[conversationId]) {
-      try {
-        messagesById.value[conversationId] = await chatApi.messages(conversationId)
-      } catch (error) {
-        console.error('[chat] 消息加载失败', error)
-        messagesById.value[conversationId] = []
-      }
+
+    try {
+      await chatApi.markRead(conversationId)
+    } catch (error) {
+      console.warn('[chat] 未读数清零失败', error)
     }
   }
 
@@ -133,6 +162,104 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /** 收到实时聊天消息：去重后追加，并更新会话预览/未读 */
+  function applyIncomingMessage(payload: RealtimeEnvelope['payload']): void {
+    const conversationId = payload.conversationId
+    const message = payload.message
+    if (!conversationId || !message) return
+
+    const conversation = conversations.value.find((item) => item.id === conversationId)
+    if (!conversation) {
+      void loadConversations(true)
+      return
+    }
+
+    const myId = useAuthStore().user?.id
+    const list = messagesById.value[conversationId]
+    if (list && !list.some((item) => item.id === message.id)) {
+      list.push(message)
+      messagesById.value[conversationId] = list
+    }
+
+    conversation.lastMessage = previewOf(message)
+    conversation.updatedAt = message.sentAt
+
+    if (message.senderId === myId) return
+
+    // 正在查看时由聊天视图在可见满 2 秒后统一标记已读；
+    // 其他会话才累加本地未读徽标。
+    if (conversation.id !== activeId.value) {
+      conversation.unread += 1
+    }
+  }
+
+  function applyNotification(payload: RealtimeEnvelope['payload']): void {
+    const myId = useAuthStore().user?.id
+    if (!payload.senderId || payload.senderId === myId) return
+    if (payload.conversationId && payload.conversationId === activeId.value) return
+
+    const title = payload.conversationName || payload.senderName || ''
+    const preview = payload.preview || ''
+    toast.info(preview ? `${title}：${preview}` : title)
+  }
+
+  function handleRealtimeEvent(event: ServerSentEvent): void {
+    if (event.event === 'connected') {
+      realtimeConnected.value = true
+      // 重连后补齐断线期间的消息与会话排序
+      void loadConversations(true)
+      if (activeId.value) void openConversation(activeId.value)
+      return
+    }
+
+    let envelope: RealtimeEnvelope
+    try {
+      envelope = JSON.parse(event.data) as RealtimeEnvelope
+    } catch {
+      return
+    }
+
+    if (envelope.type === 'chat.message') applyIncomingMessage(envelope.payload)
+    else if (envelope.type === 'notification') applyNotification(envelope.payload)
+  }
+
+  /** 建立 SSE 连接；断线后每 3 秒重连，直到主动断开或登录失效 */
+  function connectRealtime(): void {
+    // Mock 演示模式没有后端 SSE，避免无意义的连接重试
+    if (appConfig.features.mockApi || realtimeController) return
+    const controller = new AbortController()
+    realtimeController = controller
+
+    void (async () => {
+      while (!controller.signal.aborted) {
+        try {
+          await http.sse('/chat/events', handleRealtimeEvent, {
+            signal: controller.signal,
+          })
+        } catch (error) {
+          if (controller.signal.aborted) break
+          if (error instanceof ApiError && error.status === 401) break
+          console.warn('[chat] 实时连接中断，稍后重试', error)
+        }
+
+        realtimeConnected.value = false
+        if (controller.signal.aborted) break
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
+      }
+    })()
+  }
+
+  function disconnectRealtime(): void {
+    realtimeController?.abort()
+    realtimeController = null
+    realtimeConnected.value = false
+  }
+
+  /** 离开聊天页时清除活跃会话，避免实时事件误判为“正在查看” */
+  function closeConversation(): void {
+    activeId.value = null
+  }
+
   /** 发起（或复用已有）私聊；会话已存在时由 Mock/后端去重 */
   async function ensureDirectConversation(memberId: string): Promise<Conversation> {
     const conversation = await chatApi.createConversation({ memberIds: [memberId] })
@@ -148,6 +275,8 @@ export const useChatStore = defineStore('chat', () => {
 
   function appendMessage(conversationId: string, message: Message): void {
     const list = messagesById.value[conversationId] ?? []
+    // 发送方会同时收到 HTTP 响应与 SSE 事件，按消息 ID 去重，避免同一条消息展示两次
+    if (list.some((item) => item.id === message.id)) return
     list.push(message)
     messagesById.value[conversationId] = list
   }
@@ -206,12 +335,17 @@ export const useChatStore = defineStore('chat', () => {
     typingByConversation,
     sending,
     uploading,
+    realtimeConnected,
     loadConversations,
     openConversation,
+    markActiveRead,
     messagesOf,
     sendMessage,
     sendAttachment,
     refreshActive,
+    connectRealtime,
+    disconnectRealtime,
+    closeConversation,
     ensureDirectConversation,
     createGroupConversation,
   }

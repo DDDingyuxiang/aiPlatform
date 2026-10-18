@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ErrorCode } from '../../../http/errors.js'
+import { createMemoryRealtimeBus, userTopic } from '../../../infra/realtime.js'
 import { createConversationsService } from '../service.js'
+import { createMemoryUnreadStore } from '../unread-store.js'
 import type {
   AttachmentRecord,
   AttachmentStorage,
@@ -84,13 +86,17 @@ function setup(overrides: {
     remove: vi.fn(async () => {}),
   }
 
+  const realtime = createMemoryRealtimeBus()
+  const unread = createMemoryUnreadStore()
   const service = createConversationsService({
     repository,
     storage,
+    realtime,
+    unread,
     maxUploadBytes: 1024,
   })
 
-  return { service, repository, storage }
+  return { service, repository, storage, realtime, unread }
 }
 
 describe('conversations service', () => {
@@ -239,6 +245,40 @@ describe('conversations service', () => {
     ).rejects.toThrow('db down')
 
     expect(storage.remove).toHaveBeenCalledWith(expect.stringMatching(/^1\/c-1\//))
+  })
+
+  it('消息落库后推送实时事件，并为接收方累加未读', async () => {
+    const { service, realtime, unread } = setup({})
+    const events: Array<{ type: string; payload: unknown }> = []
+    const offRecipient = await realtime.subscribe(userTopic('1', '3'), (event) =>
+      events.push(event),
+    )
+    const offSender = await realtime.subscribe(userTopic('1', '2'), (event) =>
+      events.push(event),
+    )
+
+    await service.sendMessage(auth, 'c-1', { content: '你好' })
+    await offRecipient()
+    await offSender()
+
+    expect(
+      events.filter((event) => event.type === 'chat.message').length,
+    ).toBeGreaterThanOrEqual(2)
+    expect(events.some((event) => event.type === 'notification')).toBe(true)
+    await expect(unread.get('1', '3', 'c-1')).resolves.toBe(1)
+    await expect(unread.get('1', '2', 'c-1')).resolves.toBe(0)
+  })
+
+  it('会话列表返回未读数，打开会话后清零', async () => {
+    const { service, unread } = setup({})
+    await unread.increment('1', '2', 'c-1')
+    await unread.increment('1', '2', 'c-1')
+
+    const conversations = await service.list(auth)
+    expect(conversations[0]?.unread).toBe(2)
+
+    await expect(service.markRead(auth, 'c-1')).resolves.toEqual({ ok: true })
+    await expect(unread.get('1', '2', 'c-1')).resolves.toBe(0)
   })
 
   it('附件下载返回文件流与元数据', async () => {

@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { loadDatabaseConfig, type DatabaseConfig } from './database.js'
+import { loadRedisConfig, type RedisConfig } from './redis.js'
 
 /** 附件默认落在 backend/storage/uploads（部署时可用 CHAT_UPLOAD_DIR 覆盖） */
 const DEFAULT_CHAT_UPLOAD_DIR = fileURLToPath(
@@ -60,6 +61,8 @@ export interface AppConfig {
     uploadDir: string
     maxUploadBytes: number
   }
+  /** Redis 连接与会话/缓存配置 */
+  redis: RedisConfig
 }
 
 /** 加载并校验运行配置；调用前应已通过 loadEnvFile() 加载 .env */
@@ -80,5 +83,6 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       uploadDir: parsed.CHAT_UPLOAD_DIR ?? DEFAULT_CHAT_UPLOAD_DIR,
       maxUploadBytes: parsed.CHAT_MAX_UPLOAD_BYTES,
     },
+    redis: loadRedisConfig(env.REDIS_CONFIG_PATH, env),
   }
 }

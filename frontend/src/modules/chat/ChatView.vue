@@ -23,7 +23,6 @@ const draft = ref('')
 const listRef = ref<HTMLElement | null>(null)
 const composerRef = ref<InstanceType<typeof BaseTextarea> | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-let refreshTimer: number | undefined
 
 const conversationId = computed(() =>
   typeof route.params.conversationId === 'string' ? route.params.conversationId : null,
@@ -38,32 +37,65 @@ const typingName = computed(() =>
   conversationId.value ? (chat.typingByConversation[conversationId.value] ?? null) : null,
 )
 
+/**
+ * 消息窗口可见后每 2 秒标记一次已读：
+ * - 停留不足 2 秒就离开，未读保持；
+ * - 持续可见时，新到达的消息最迟 2 秒内被标记已读，不会被持续消息流拖住。
+ */
+const READ_INTERVAL_MS = 2_000
+let readTicker: number | undefined
+
+function stopReadTicker(): void {
+  if (readTicker !== undefined) {
+    window.clearInterval(readTicker)
+    readTicker = undefined
+  }
+}
+
+function startReadTicker(): void {
+  stopReadTicker()
+  if (!conversationId.value || document.hidden) return
+
+  readTicker = window.setInterval(() => {
+    if (!conversationId.value || document.hidden) return
+    void chat.markActiveRead()
+  }, READ_INTERVAL_MS)
+}
+
+function onVisibilityChange(): void {
+  if (document.hidden) stopReadTicker()
+  else startReadTicker()
+}
+
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onBeforeUnmount(() => {
+  stopReadTicker()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  chat.closeConversation()
+})
+
 watch(
   conversationId,
   async (id) => {
+    stopReadTicker()
     if (!id) return
     // 直接刷新 /messages/:id 时，会话列表可能尚未加载
     await chat.loadConversations()
     await chat.openConversation(id)
+    startReadTicker()
   },
   { immediate: true },
 )
 
 watch(
   () => [messages.value.length, typingName.value],
-  () => scrollToBottom(),
+  () => {
+    scrollToBottom()
+  },
 )
-
-/** 首期用轮询同步新消息；后续接入 WebSocket/SSE 后移除 */
-onMounted(() => {
-  refreshTimer = window.setInterval(() => {
-    if (!document.hidden) void chat.refreshActive()
-  }, 5000)
-})
-
-onBeforeUnmount(() => {
-  if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
-})
 
 function scrollToBottom(): void {
   void nextTick(() => {

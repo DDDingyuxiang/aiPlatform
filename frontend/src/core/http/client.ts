@@ -9,7 +9,14 @@ import { appConfig } from '@/core/config'
 import { clearToken, getToken } from '@/core/auth/token'
 import { genId } from '@/shared/utils/id'
 import { isMockFailure, matchMock } from './mock'
-import { ApiError, SUCCESS_CODE, type ApiEnvelope, type HttpMethod, type RequestOptions } from './types'
+import {
+  ApiError,
+  SUCCESS_CODE,
+  type ApiEnvelope,
+  type HttpMethod,
+  type RequestOptions,
+  type ServerSentEvent,
+} from './types'
 
 const DEFAULT_TIMEOUT_MS = 15_000
 
@@ -155,9 +162,87 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
   }
 }
 
+/**
+ * SSE 订阅（带 Bearer 鉴权）。
+ *
+ * EventSource 无法附加 Authorization 头，因此用 fetch + ReadableStream 手动解析。
+ * 函数在连接关闭或 signal 中止时返回，调用方可自行决定是否重连。
+ */
+async function requestSse(
+  path: string,
+  onEvent: (event: ServerSentEvent) => void,
+  options: RequestOptions = {},
+): Promise<void> {
+  const requestId = genId('req')
+  const token = getToken()
+  const controller = new AbortController()
+  const externalSignal = options.signal
+  const abort = (): void => controller.abort()
+  externalSignal?.addEventListener('abort', abort, { once: true })
+
+  try {
+    const response = await fetch(buildUrl(path), {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        'X-Request-Id': requestId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+      signal: controller.signal,
+    })
+
+    if (response.status === 401) {
+      clearToken()
+    }
+    if (!response.ok || !response.body) {
+      const envelope = (await response.json().catch(() => null)) as ApiEnvelope<null> | null
+      throw new ApiError(envelope?.message || `HTTP ${response.status}`, {
+        code: envelope?.code ?? -1,
+        status: response.status,
+        requestId: envelope?.requestId || requestId,
+      })
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      let separator = buffer.indexOf('\n\n')
+      while (separator >= 0) {
+        const chunk = buffer.slice(0, separator)
+        buffer = buffer.slice(separator + 2)
+
+        let eventName = 'message'
+        const dataLines: string[] = []
+        for (const line of chunk.split('\n')) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+        }
+        if (dataLines.length > 0) {
+          onEvent({ event: eventName, data: dataLines.join('\n') })
+        }
+        separator = buffer.indexOf('\n\n')
+      }
+    }
+  } catch (error) {
+    if (controller.signal.aborted) return
+    throw toApiError(error, requestId)
+  } finally {
+    externalSignal?.removeEventListener('abort', abort)
+  }
+}
+
 export const http = {
   get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
   getBlob: (path: string, options?: RequestOptions) => requestBlob(path, options),
+  sse: (path: string, onEvent: (event: ServerSentEvent) => void, options?: RequestOptions) =>
+    requestSse(path, onEvent, options),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>('POST', path, body, options),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>

@@ -5,6 +5,7 @@ import {
 } from '@aiplatform/contracts'
 import { ErrorCode } from '../../../http/errors.js'
 import { createIdentityService } from '../service.js'
+import { createMemorySessionStore } from '../session-store.js'
 import {
   DuplicateEmailError,
   DuplicateEmployeeFieldError,
@@ -165,21 +166,24 @@ function setup(overrides: {
   const tokens: TokenIssuer = {
     issue: vi.fn(async () => 'signed-token'),
   }
+  const sessions = createMemorySessionStore()
   const service = createIdentityService({
     repository,
     passwords,
     tokens,
+    sessions,
+    sessionTtlSeconds: 3_600,
     passwordHasher: { hash: async () => 'hashed-password' },
     timezone: overrides.timezone ?? 'Asia/Shanghai',
     now: () => overrides.now ?? new Date('2026-10-17T00:00:00Z'),
   })
 
-  return { service, repository, passwords, tokens }
+  return { service, repository, passwords, tokens, sessions }
 }
 
 describe('identity service login', () => {
-  it('凭证正确时返回令牌与首页用户资料', async () => {
-    const { service, tokens } = setup({})
+  it('凭证正确时返回令牌与首页用户资料，并写入登录会话', async () => {
+    const { service, tokens, sessions } = setup({})
 
     const result = await service.login({
       username: 'admin',
@@ -197,11 +201,18 @@ describe('identity service login', () => {
       department: '综合管理部',
       phone: '',
     })
-    expect(tokens.issue).toHaveBeenCalledWith({
-      tenantId: '1',
-      employeeId: '2',
-      publicId: candidate.publicId,
-    })
+    expect(tokens.issue).toHaveBeenCalledWith(
+      {
+        tenantId: '1',
+        employeeId: '2',
+        publicId: candidate.publicId,
+      },
+      expect.any(String),
+    )
+
+    const sessionId = vi.mocked(tokens.issue).mock.calls[0]?.[1]
+    expect(sessionId).toBeTruthy()
+    await expect(sessions.exists(sessionId!)).resolves.toBe(true)
   })
 
   it('未知用户与多租户重名用户均返回统一错误，并执行占位比较', async () => {
@@ -285,9 +296,18 @@ describe('identity service profile', () => {
     }
   })
 
-  it('登出为幂等成功', async () => {
-    const { service } = setup({})
-    await expect(service.logout()).resolves.toEqual({ ok: true })
+  it('登出撤销 Redis 会话，旧令牌随之失效', async () => {
+    const { service, sessions } = setup({})
+    const auth = {
+      tenantId: '1',
+      employeeId: '2',
+      publicId: candidate.publicId,
+      sessionId: 'session-logout',
+    }
+    await sessions.create(auth.sessionId, auth, 3_600)
+
+    await expect(service.logout(auth)).resolves.toEqual({ ok: true })
+    await expect(sessions.exists(auth.sessionId)).resolves.toBe(false)
   })
 })
 
@@ -536,6 +556,28 @@ describe('identity service employee scope and admin overview', () => {
       expect.objectContaining({ status: 'disabled' }),
       { protectLastActiveSuperAdmin: true },
     )
+  })
+
+  it('停用员工时撤销其全部登录会话', async () => {
+    const { service, sessions } = setup({
+      profile: platformProfile,
+      platformTenantId: '100',
+      companies: [platformCompany],
+      adminEmployee: platformTarget,
+    })
+    const targetSession = {
+      tenantId: '100',
+      employeeId: '201',
+      publicId: platformTarget.publicId,
+      sessionId: 'target-session',
+    }
+    await sessions.create(targetSession.sessionId, targetSession, 3_600)
+
+    await service.updateEmployee(platformAuth, platformTarget.publicId, {
+      status: 'disabled',
+    })
+
+    await expect(sessions.exists(targetSession.sessionId)).resolves.toBe(false)
   })
 
   it('不涉及移除超管的修改不开启事务保护', async () => {

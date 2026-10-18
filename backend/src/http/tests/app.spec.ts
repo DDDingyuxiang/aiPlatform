@@ -15,6 +15,7 @@ import { createAuthRouter } from '../../modules/identity/router.js'
 import type {
   AuthContext,
   IdentityService,
+  SessionStore,
   TokenVerifier,
 } from '../../modules/identity/types.js'
 import type { Logger } from '../../shared/logger.js'
@@ -24,6 +25,7 @@ const authContext: AuthContext = {
   tenantId: '1',
   employeeId: '2',
   publicId: '01J00000000000000000000001',
+  sessionId: 'session-test',
 }
 
 const user: UserProfile = {
@@ -121,7 +123,13 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
       return authContext
     }),
   }
-  const requireAuth = createAuthMiddleware(tokens)
+  const sessions: SessionStore = {
+    create: vi.fn(async () => {}),
+    exists: vi.fn(async () => true),
+    revoke: vi.fn(async () => {}),
+    revokeAllForEmployee: vi.fn(async () => {}),
+  }
+  const requireAuth = createAuthMiddleware(tokens, sessions)
   const requireAnyPermission = createRequireAnyPermission(service)
   const authRouter = createAuthRouter({ service, requireAuth })
   const identityRouter = createIdentityRouter({ service, requireAuth })
@@ -143,6 +151,7 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
     app,
     service,
     tokens,
+    sessions,
     setHealthy: (value: boolean) => {
       healthy = value
     },
@@ -240,7 +249,7 @@ describe('auth routes', () => {
   })
 
   it('有效令牌可读取资料并登出', async () => {
-    const { app } = createTestApp()
+    const { app, service } = createTestApp()
 
     const profile = await request(app)
       .get('/api/v1/auth/profile')
@@ -253,6 +262,19 @@ describe('auth routes', () => {
       .set('Authorization', 'Bearer valid-token')
     expect(logout.status).toBe(200)
     expect(logout.body.data).toEqual({ ok: true })
+    expect(service.logout).toHaveBeenCalledWith(authContext)
+  })
+
+  it('Redis 会话被撤销后旧令牌返回 401', async () => {
+    const { app, sessions } = createTestApp()
+    vi.mocked(sessions.exists).mockResolvedValueOnce(false)
+
+    const response = await request(app)
+      .get('/api/v1/auth/profile')
+      .set('Authorization', 'Bearer valid-token')
+
+    expect(response.status).toBe(401)
+    expect(response.body).toMatchObject({ code: ErrorCode.UNAUTHORIZED })
   })
 
   it('个人资料修改需要登录并校验载荷', async () => {

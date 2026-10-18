@@ -166,4 +166,6 @@ export interface ConversationsService {
     conversationId: string,
     attachmentId: string,
   ): Promise<AttachmentDownloadRecord>
+  /** 打开会话后清零 Redis 未读数 */
+  markRead(auth: AuthContext, conversationId: string): Promise<{ ok: boolean }>
 }

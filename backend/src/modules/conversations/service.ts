@@ -7,7 +7,9 @@ import type {
 } from '@aiplatform/contracts'
 import { AppError, ErrorCode } from '../../http/errors.js'
 import type { Logger } from '../../shared/logger.js'
+import { userTopic, type RealtimeBus } from '../../infra/realtime.js'
 import type { AuthContext } from '../identity/index.js'
+import type { UnreadStore } from './unread-store.js'
 import type {
   AttachmentStorage,
   ConversationsRepository,
@@ -19,6 +21,10 @@ import type {
 export interface ConversationsServiceOptions {
   repository: ConversationsRepository
   storage: AttachmentStorage
+  /** Redis 实时事件总线；推送失败不影响消息落库 */
+  realtime: RealtimeBus
+  /** Redis 未读数 */
+  unread: UnreadStore
   logger?: Logger
   /** 单个附件大小上限（字节）；路由层会先做一次同样的限制 */
   maxUploadBytes: number
@@ -67,34 +73,52 @@ function toChatMessage(record: MessageRecord): ChatMessage {
   }
 }
 
-function toConversation(record: ConversationRecord, selfEmployeeId: string): Conversation {
+/** 会话在某个成员视角下的显示名称 */
+function conversationName(
+  record: ConversationRecord,
+  viewerEmployeeId: string,
+): string {
   const others = record.participants.filter(
-    (participant) => participant.employeeId !== selfEmployeeId,
+    (participant) => participant.employeeId !== viewerEmployeeId,
   )
-  const name =
-    record.type === 'group'
-      ? (record.title ?? autoGroupName(others.map((participant) => participant.name)))
-      : (others.at(0)?.name ?? '')
+  return record.type === 'group'
+    ? (record.title ?? autoGroupName(others.map((participant) => participant.name)))
+    : (others.at(0)?.name ?? '')
+}
 
+function toConversation(
+  record: ConversationRecord,
+  selfEmployeeId: string,
+  unread: number,
+): Conversation {
   return {
     id: record.publicId,
     type: record.type,
-    name,
+    name: conversationName(record, selfEmployeeId),
     participants: record.participants.map((participant) => ({
       id: participant.publicId,
       name: participant.name,
     })),
-    // 首期未记录已读回执，未读数固定为 0
-    unread: 0,
+    unread,
     updatedAt: record.updatedAt,
     lastMessage: record.lastMessage,
   }
 }
 
+/** 消息在会话列表/通知中的预览文案 */
+function messagePreview(message: ChatMessage): string {
+  if (message.type === 'image' || message.type === 'file') {
+    const label = message.type === 'image' ? '[图片]' : '[文件]'
+    const name = message.attachments.at(0)?.fileName
+    return name ? `${label} ${name}` : label
+  }
+  return message.content
+}
+
 export function createConversationsService(
   options: ConversationsServiceOptions,
 ): ConversationsService {
-  const { repository, storage, logger, maxUploadBytes } = options
+  const { repository, storage, realtime, unread, logger, maxUploadBytes } = options
 
   function notFound(message = '会话不存在'): AppError {
     return new AppError(ErrorCode.NOT_FOUND, message, 404)
@@ -118,14 +142,89 @@ export function createConversationsService(
     return conversation
   }
 
+  /**
+   * 消息落库后推送实时事件并累加接收方未读数。
+   *
+   * 推送属于尽力而为：失败只记录日志，不回滚已经持久化的消息。
+   */
+  async function publishMessage(
+    auth: AuthContext,
+    conversation: ConversationRecord,
+    messageRecord: MessageRecord,
+  ): Promise<ChatMessage> {
+    const message = toChatMessage(messageRecord)
+    const preview = messagePreview(message)
+    const sender = conversation.participants.find(
+      (participant) => participant.employeeId === auth.employeeId,
+    )
+
+    // 先完成未读数累加，再推送消息事件：
+    // 否则客户端收到事件后调用“已读”可能早于累加完成，未读数会残留。
+    const unreadTasks = conversation.participants
+      .filter((participant) => participant.employeeId !== auth.employeeId)
+      .map((participant) =>
+        unread.increment(auth.tenantId, participant.employeeId, conversation.publicId),
+      )
+    await Promise.allSettled(unreadTasks)
+
+    const publishTasks: Array<Promise<unknown>> = []
+    for (const participant of conversation.participants) {
+      const name = conversationName(conversation, participant.employeeId)
+
+      // 所有参与者（含发送者）都收到消息事件，便于多标签页/多端同步
+      publishTasks.push(
+        realtime.publish(userTopic(auth.tenantId, participant.employeeId), {
+          type: 'chat.message',
+          payload: {
+            conversationId: conversation.publicId,
+            conversationName: name,
+            message,
+          },
+        }),
+      )
+
+      if (participant.employeeId === auth.employeeId) continue
+
+      publishTasks.push(
+        realtime.publish(userTopic(auth.tenantId, participant.employeeId), {
+          type: 'notification',
+          payload: {
+            kind: 'chat.message',
+            conversationId: conversation.publicId,
+            conversationName: name,
+            senderId: auth.publicId,
+            senderName: sender?.name ?? '',
+            preview,
+          },
+        }),
+      )
+    }
+
+    const results = await Promise.allSettled(publishTasks)
+    const failed = results.filter((result) => result.status === 'rejected')
+    if (failed.length > 0) {
+      logger?.warn('conversations.realtime_publish_failed', {
+        conversationId: conversation.publicId,
+        failed: failed.length,
+      })
+    }
+
+    return message
+  }
+
   return {
     async list(auth) {
       const conversations = await repository.listConversations(
         auth.tenantId,
         auth.employeeId,
       )
-      return conversations.map((conversation) =>
-        toConversation(conversation, auth.employeeId),
+      const unreadCounts = await Promise.all(
+        conversations.map((conversation) =>
+          unread.get(auth.tenantId, auth.employeeId, conversation.publicId),
+        ),
+      )
+      return conversations.map((conversation, index) =>
+        toConversation(conversation, auth.employeeId, unreadCounts[index] ?? 0),
       )
     },
 
@@ -156,7 +255,14 @@ export function createConversationsService(
           auth.employeeId,
           otherEmployeeIds[0]!,
         )
-        if (existing) return toConversation(existing, auth.employeeId)
+        if (existing) {
+          const existingUnread = await unread.get(
+            auth.tenantId,
+            auth.employeeId,
+            existing.publicId,
+          )
+          return toConversation(existing, auth.employeeId, existingUnread)
+        }
       }
 
       const type = otherEmployeeIds.length === 1 ? 'direct' : 'group'
@@ -180,7 +286,7 @@ export function createConversationsService(
       if (!created) {
         throw new AppError(ErrorCode.INTERNAL, '创建会话后读取失败', 500)
       }
-      return toConversation(created, auth.employeeId)
+      return toConversation(created, auth.employeeId, 0)
     },
 
     async listMessages(auth, conversationId) {
@@ -200,7 +306,7 @@ export function createConversationsService(
         auth.employeeId,
         { type: 'text', content: payload.content },
       )
-      return toChatMessage(message)
+      return publishMessage(auth, conversation, message)
     },
 
     async sendAttachment(auth, conversationId, input) {
@@ -217,8 +323,10 @@ export function createConversationsService(
       const storageKey = `${auth.tenantId}/${conversation.publicId}/${ulid()}`
 
       await storage.save(storageKey, input.data)
+
+      let message: MessageRecord
       try {
-        const message = await repository.createMessage(
+        message = await repository.createMessage(
           auth.tenantId,
           conversation,
           auth.employeeId,
@@ -233,9 +341,8 @@ export function createConversationsService(
             },
           },
         )
-        return toChatMessage(message)
       } catch (error) {
-        // 数据库写入失败时清理已落盘的文件，避免产生孤儿附件
+        // 仅数据库写入失败时清理文件；推送失败不回滚已持久化的消息
         await storage.remove(storageKey).catch((cleanupError: unknown) => {
           logger?.warn('conversations.attachment_cleanup_failed', {
             storageKey,
@@ -247,6 +354,8 @@ export function createConversationsService(
         })
         throw error
       }
+
+      return publishMessage(auth, conversation, message)
     },
 
     async getAttachment(auth, conversationId, attachmentId) {
@@ -271,6 +380,12 @@ export function createConversationsService(
         sizeBytes: attachment.sizeBytes,
         stream,
       }
+    },
+
+    async markRead(auth, conversationId) {
+      const conversation = await requireConversation(auth, conversationId)
+      await unread.reset(auth.tenantId, auth.employeeId, conversation.publicId)
+      return { ok: true }
     },
   }
 }

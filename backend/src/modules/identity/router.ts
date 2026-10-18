@@ -21,7 +21,7 @@ export function createAuthRouter(options: AuthRouterOptions): Router {
   })
 
   router.post('/logout', requireAuth, async (req, res) => {
-    const result = await service.logout()
+    const result = await service.logout(requireAuthContext(req))
     sendSuccess(res, result, req.requestId)
   })
 

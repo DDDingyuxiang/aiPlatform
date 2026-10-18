@@ -22,6 +22,22 @@ export interface AuthContext {
   employeeId: string
   /** 员工对外 public_id，写入 JWT 的 sub */
   publicId: string
+  /** 登录会话 ID（JWT 的 jti）；用于 Redis 登录状态与撤销 */
+  sessionId?: string
+}
+
+/**
+ * 登录会话存储。
+ *
+ * JWT 只负责签名与声明，真正的“登录状态”以 Redis 中的会话为准：
+ * 退出登录、管理员停用/删除员工时撤销会话即可让旧令牌立即失效。
+ */
+export interface SessionStore {
+  create(sessionId: string, auth: AuthContext, ttlSeconds: number): Promise<void>
+  exists(sessionId: string): Promise<boolean>
+  revoke(sessionId: string): Promise<void>
+  /** 撤销某员工的全部登录会话（停用/删除账号时使用） */
+  revokeAllForEmployee(tenantId: string, employeeId: string): Promise<void>
 }
 
 /** 登录查询结果：同一用户名可能因多租户存在多条记录 */
@@ -282,7 +298,8 @@ export interface PasswordHasher {
 }
 
 export interface TokenIssuer {
-  issue(auth: AuthContext): Promise<string>
+  /** sessionId 会写入 JWT 的 jti，并与 Redis 会话一一对应 */
+  issue(auth: AuthContext, sessionId: string): Promise<string>
 }
 
 export interface TokenVerifier {
@@ -293,7 +310,7 @@ export interface TokenVerifier {
 export interface IdentityService {
   login(payload: LoginPayload): Promise<LoginResult>
   profile(auth: AuthContext): Promise<UserProfile>
-  logout(): Promise<{ ok: boolean }>
+  logout(auth: AuthContext): Promise<{ ok: boolean }>
   directory(auth: AuthContext): Promise<DirectoryResult>
   /** 当前用户在当前业务时区的当月考勤 */
   attendance(auth: AuthContext): Promise<AttendanceResult>

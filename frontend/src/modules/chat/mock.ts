@@ -95,6 +95,15 @@ defineMock('POST', '/chat/conversations', ({ body, token }) => {
   return { ...conversation, participants: [...conversation.participants] }
 })
 
+defineMock('POST', '/chat/conversations/:id/read', ({ params, token }) => {
+  const userId = requireUserId(token)
+  if (!userId) return fail(40100, '登录状态已失效', 401)
+  const conversation = conversations.find((item) => item.id === params.id)
+  if (!conversation) return fail(40401, '会话不存在', 404)
+  conversation.unread = 0
+  return { ok: true }
+})
+
 defineMock('POST', '/chat/conversations/:id/messages', ({ params, body, token }) => {
   const userId = requireUserId(token)
   if (!userId) return fail(40100, '登录状态已失效', 401)

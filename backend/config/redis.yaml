@@ -1,0 +1,17 @@
+# ============================================================================
+# Redis 连接配置（唯一来源，提交到 Git）
+# 说明：
+#   * 本文件只保存连接地址等非秘密信息，禁止写入密码；
+#   * 密码通过环境变量 REDIS_PASSWORD 注入；
+#   * 部署环境可用 REDIS_HOST / REDIS_PORT / REDIS_DB 等环境变量覆盖；
+#   * REDIS_CONFIG_PATH 可指向其他配置文件。
+# ============================================================================
+host: 127.0.0.1
+port: 6379
+db: 0
+# 普通键前缀（会话、缓存、未读数等）
+keyPrefix: 'aiplatform:'
+# Pub/Sub 频道前缀（实时消息/通知；频道不受 keyPrefix 影响）
+channelPrefix: 'aiplatform:rt:'
+connectTimeoutMs: 10000
+commandTimeoutMs: 3000

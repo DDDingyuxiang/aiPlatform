@@ -5,6 +5,12 @@ export type { ApiEnvelope }
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
+/** SSE 事件（event 为事件名，data 为服务端 JSON 字符串） */
+export interface ServerSentEvent {
+  event: string
+  data: string
+}
+
 export const SUCCESS_CODE = 0
 
 /** 请求选项 */

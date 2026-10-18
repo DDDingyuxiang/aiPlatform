@@ -1,5 +1,10 @@
 export { http } from './client'
 export { ApiError, SUCCESS_CODE } from './types'
-export type { ApiEnvelope, HttpMethod, RequestOptions } from './types'
+export type {
+  ApiEnvelope,
+  HttpMethod,
+  RequestOptions,
+  ServerSentEvent,
+} from './types'
 export { defineMock, fail, isMockFailure, matchMock } from './mock'
 export type { MockContext, MockFailure, MockHandler } from './mock'

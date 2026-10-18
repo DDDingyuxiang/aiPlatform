@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { ulid } from 'ulid'
 import { EMPLOYEE_MANAGE_PERMISSION } from '@aiplatform/contracts'
 import type {
@@ -38,6 +39,7 @@ import {
   type PasswordVerifier,
   type ProfileRecord,
   type ProfileUpdateRecord,
+  type SessionStore,
   type TokenIssuer,
 } from './types.js'
 
@@ -52,6 +54,10 @@ export interface IdentityServiceOptions {
   repository: IdentityRepository
   passwords: PasswordVerifier
   tokens: TokenIssuer
+  /** Redis 登录会话；退出登录与停用账号时撤销令牌 */
+  sessions: SessionStore
+  /** 会话 TTL，应与 JWT 有效期一致（秒） */
+  sessionTtlSeconds: number
   /** 新建员工的密码哈希能力；测试可注入低成本替身 */
   passwordHasher?: PasswordHasher
   logger?: Logger
@@ -69,7 +75,7 @@ interface EmployeeScope {
 }
 
 export function createIdentityService(options: IdentityServiceOptions): IdentityService {
-  const { repository, passwords, tokens, logger } = options
+  const { repository, passwords, tokens, sessions, sessionTtlSeconds, logger } = options
   const passwordHasher = options.passwordHasher ?? { hash: hashPassword }
   const timezone = options.timezone ?? 'Asia/Shanghai'
   const now = options.now ?? (() => new Date())
@@ -96,6 +102,22 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
 
   async function verifyDummy(password: string): Promise<void> {
     await passwords.verify(password, DUMMY_PASSWORD_HASH)
+  }
+
+  /** 停用/删除账号后撤销其全部登录会话；失败只记录日志，认证层会 fail-closed */
+  async function revokeEmployeeSessions(
+    tenantId: string,
+    employeeId: string,
+  ): Promise<void> {
+    try {
+      await sessions.revokeAllForEmployee(tenantId, employeeId)
+    } catch (error) {
+      logger?.warn('identity.session_revoke_failed', {
+        tenantId,
+        employeeId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   async function loadProfile(
@@ -268,11 +290,14 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
       if (!passwordValid) throw invalidCredentials()
 
       const user = await loadProfile(candidate.tenantId, candidate.employeeId, invalidCredentials())
-      const token = await tokens.issue({
+      const auth = {
         tenantId: candidate.tenantId,
         employeeId: candidate.employeeId,
         publicId: candidate.publicId,
-      })
+      }
+      const sessionId = randomUUID()
+      const token = await tokens.issue(auth, sessionId)
+      await sessions.create(sessionId, auth, sessionTtlSeconds)
 
       return { token, user }
     },
@@ -281,8 +306,9 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
       return loadProfile(auth.tenantId, auth.employeeId, unauthorized())
     },
 
-    async logout(): Promise<{ ok: boolean }> {
-      // JWT 无状态：客户端清除令牌即可；服务端吊销能力在引入 Redis 后补充
+    async logout(auth: AuthContext): Promise<{ ok: boolean }> {
+      // 删除 Redis 会话后，旧 JWT 即使签名有效也会被认证中间件拒绝
+      if (auth.sessionId) await sessions.revoke(auth.sessionId)
       return { ok: true }
     },
 
@@ -496,6 +522,10 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
         translateEmployeeError(error)
       }
 
+      if (payload.status !== undefined && payload.status !== 'active') {
+        await revokeEmployeeSessions(target.tenantId, target.employeeId)
+      }
+
       const updated = await repository.findAdminEmployee(target.tenantId, publicId)
       if (!updated) throw notFound()
       return toAdminEmployee(updated)
@@ -522,6 +552,8 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
         }
         throw error
       }
+
+      await revokeEmployeeSessions(target.tenantId, target.employeeId)
       return { ok: true }
     },
 

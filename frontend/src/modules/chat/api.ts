@@ -51,4 +51,10 @@ export const chatApi = {
   /** 附件下载需要携带 Bearer 令牌，因此由客户端取回 Blob 后再落盘/预览 */
   downloadAttachment: (conversationId: string, attachmentId: string) =>
     http.getBlob(attachmentPath(conversationId, attachmentId)),
+
+  /** 打开会话后清零 Redis 未读数 */
+  markRead: (conversationId: string) =>
+    http.post<{ ok: boolean }>(
+      `/chat/conversations/${encodeURIComponent(conversationId)}/read`,
+    ),
 }
