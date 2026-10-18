@@ -77,11 +77,25 @@ function isActive(prefix: string): boolean {
     <div class="panel__scroll">
       <ProfileCard />
 
+      <PanelSection :title="t('nav.chat')" icon="sparkles" default-open>
+        <RouterLink
+          to="/chat"
+          class="ai-entry"
+          @click="preferences.closeMobileNav()"
+        >
+          <span class="ai-entry__icon"><Icon name="sparkles" :size="16" /></span>
+          <span class="ai-entry__body">
+            <span class="ai-entry__title">{{ t('panel.ai.entryTitle') }}</span>
+            <span class="ai-entry__desc">{{ t('panel.ai.entryDesc') }}</span>
+          </span>
+          <Icon name="chevron-right" :size="14" class="ai-entry__arrow" />
+        </RouterLink>
+      </PanelSection>
+
       <PanelSection
-        :title="t('nav.chat')"
+        :title="t('nav.messages')"
         icon="chat"
         :badge="chat.totalUnread || undefined"
-        default-open
       >
         <ConversationList />
       </PanelSection>
@@ -204,6 +218,57 @@ function isActive(prefix: string): boolean {
  */
 .panel__scroll > * {
   flex-shrink: 0;
+}
+
+/* ---- 智能对话入口 ---- */
+.ai-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-ai-soft);
+  transition: filter var(--duration-fast) var(--ease-standard);
+}
+
+.ai-entry:hover {
+  filter: brightness(0.97);
+}
+
+.ai-entry__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--color-ai-1), var(--color-ai-2));
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.ai-entry__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ai-entry__title {
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-1);
+}
+
+.ai-entry__desc {
+  font-size: var(--font-xs);
+  color: var(--color-text-3);
+}
+
+.ai-entry__arrow {
+  flex-shrink: 0;
+  color: var(--color-text-3);
 }
 
 /* ---- 入口链接（与区块卡片同风格的单行卡片） ---- */

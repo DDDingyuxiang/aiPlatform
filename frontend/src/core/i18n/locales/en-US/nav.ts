@@ -2,6 +2,7 @@
 export default {
   dashboard: 'Dashboard',
   chat: 'AI Chat',
+  messages: 'Messages',
   summaries: 'Conversation Summaries',
   tasks: 'Tasks',
   workflows: 'Approvals',

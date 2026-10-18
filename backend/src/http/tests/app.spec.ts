@@ -1,3 +1,4 @@
+import { Router } from 'express'
 import request from 'supertest'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -130,6 +131,7 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
     authRouter,
     identityRouter,
     adminRouter,
+    conversationsRouter: Router(),
     healthCheck: async () => {
       if (!healthy) throw new Error('database down')
     },

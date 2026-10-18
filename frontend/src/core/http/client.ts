@@ -29,6 +29,18 @@ function buildUrl(path: string, params?: RequestOptions['params']): string {
   return qs ? `${url}?${qs}` : url
 }
 
+function toApiError(error: unknown, requestId: string): ApiError {
+  if (error instanceof ApiError) return error
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return new ApiError('请求超时，请稍后重试', { code: -2, status: 0, requestId })
+  }
+  return new ApiError(error instanceof Error ? error.message : '网络异常', {
+    code: -3,
+    status: 0,
+    requestId,
+  })
+}
+
 async function request<T>(
   method: HttpMethod,
   path: string,
@@ -62,18 +74,20 @@ async function request<T>(
   }
 
   // ---- 真实请求 ----
+  // Blob（文件上传）直接作为请求体，不经过 JSON 序列化
+  const isBlobBody = typeof Blob !== 'undefined' && body instanceof Blob
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
   try {
     const response = await fetch(buildUrl(path, options.params), {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        ...(isBlobBody ? {} : { 'Content-Type': 'application/json' }),
         'X-Request-Id': requestId,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isBlobBody ? body : JSON.stringify(body),
       signal: options.signal ?? controller.signal,
     })
 
@@ -99,15 +113,43 @@ async function request<T>(
     }
     return envelope.data
   } catch (error) {
-    if (error instanceof ApiError) throw error
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiError('请求超时，请稍后重试', { code: -2, status: 0, requestId })
-    }
-    throw new ApiError(error instanceof Error ? error.message : '网络异常', {
-      code: -3,
-      status: 0,
-      requestId,
+    throw toApiError(error, requestId)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** 下载二进制资源（附件等）；失败响应仍按统一信封解析错误文案 */
+async function requestBlob(path: string, options: RequestOptions = {}): Promise<Blob> {
+  const requestId = genId('req')
+  const token = getToken()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  try {
+    const response = await fetch(buildUrl(path, options.params), {
+      method: 'GET',
+      headers: {
+        'X-Request-Id': requestId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+      signal: options.signal ?? controller.signal,
     })
+
+    if (response.status === 401) clearToken()
+
+    if (!response.ok) {
+      const envelope = (await response.json().catch(() => null)) as ApiEnvelope<null> | null
+      throw new ApiError(envelope?.message || `HTTP ${response.status}`, {
+        code: envelope?.code ?? -1,
+        status: response.status,
+        requestId: envelope?.requestId || requestId,
+      })
+    }
+
+    return await response.blob()
+  } catch (error) {
+    throw toApiError(error, requestId)
   } finally {
     clearTimeout(timer)
   }
@@ -115,6 +157,7 @@ async function request<T>(
 
 export const http = {
   get: <T>(path: string, options?: RequestOptions) => request<T>('GET', path, undefined, options),
+  getBlob: (path: string, options?: RequestOptions) => requestBlob(path, options),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>('POST', path, body, options),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>

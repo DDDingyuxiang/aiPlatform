@@ -108,6 +108,8 @@ defineMock('POST', '/chat/conversations/:id/messages', ({ params, body, token })
     id: `m-${Date.now()}`,
     conversationId: conversation.id,
     senderId: userId,
+    type: 'text',
+    attachments: [],
     content,
     sentAt: new Date().toISOString(),
   }

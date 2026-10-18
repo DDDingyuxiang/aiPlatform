@@ -1,5 +1,11 @@
+import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import { loadDatabaseConfig, type DatabaseConfig } from './database.js'
+
+/** 附件默认落在 backend/storage/uploads（部署时可用 CHAT_UPLOAD_DIR 覆盖） */
+const DEFAULT_CHAT_UPLOAD_DIR = fileURLToPath(
+  new URL('../../storage/uploads', import.meta.url),
+)
 
 const serverEnvSchema = z
   .object({
@@ -9,6 +15,15 @@ const serverEnvSchema = z
     JWT_TTL_SECONDS: z.coerce.number().int().min(300).max(86_400).default(7_200),
     CORS_ORIGINS: z.string().default('http://localhost:5173'),
     APP_TIMEZONE: z.string().default('Asia/Shanghai'),
+    /** 聊天附件本地存储目录 */
+    CHAT_UPLOAD_DIR: z.string().trim().min(1).optional(),
+    /** 单个聊天附件大小上限（字节），默认 20 MiB */
+    CHAT_MAX_UPLOAD_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(100 * 1024 * 1024)
+      .default(20 * 1024 * 1024),
   })
   .superRefine((value, ctx) => {
     // 防止把 .env.example 中的示例值直接用于生产
@@ -40,6 +55,11 @@ export interface AppConfig {
   /** 业务时区：用于“本月”等按自然月统计的边界 */
   timezone: string
   database: DatabaseConfig
+  /** 聊天附件存储配置 */
+  chat: {
+    uploadDir: string
+    maxUploadBytes: number
+  }
 }
 
 /** 加载并校验运行配置；调用前应已通过 loadEnvFile() 加载 .env */
@@ -56,5 +76,9 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       .filter(Boolean),
     timezone: parsed.APP_TIMEZONE,
     database: loadDatabaseConfig(env.DB_CONFIG_PATH, env),
+    chat: {
+      uploadDir: parsed.CHAT_UPLOAD_DIR ?? DEFAULT_CHAT_UPLOAD_DIR,
+      maxUploadBytes: parsed.CHAT_MAX_UPLOAD_BYTES,
+    },
   }
 }

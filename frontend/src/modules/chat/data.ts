@@ -71,26 +71,26 @@ export const DEMO_CONVERSATIONS: Conversation[] = [
 
 export const DEMO_MESSAGES: Record<string, Message[]> = {
   'c-101': [
-    { id: 'm-1011', conversationId: 'c-101', senderId: 'u-002', content: '王哥，市场部这周的活动物料需求整理好了，文件发你邮箱了', sentAt: hoursAgo(2) },
-    { id: 'm-1012', conversationId: 'c-101', senderId: 'u-001', content: '收到，我下午过一遍', sentAt: hoursAgo(1.5) },
-    { id: 'm-1013', conversationId: 'c-101', senderId: 'u-002', content: '好的～另外这周五的评审会需要我做汇报吗？', sentAt: hoursAgo(0.5) },
+    { id: 'm-1011', conversationId: 'c-101', senderId: 'u-002', type: 'text', attachments: [], content: '王哥，市场部这周的活动物料需求整理好了，文件发你邮箱了', sentAt: hoursAgo(2) },
+    { id: 'm-1012', conversationId: 'c-101', senderId: 'u-001', type: 'text', attachments: [], content: '收到，我下午过一遍', sentAt: hoursAgo(1.5) },
+    { id: 'm-1013', conversationId: 'c-101', senderId: 'u-002', type: 'text', attachments: [], content: '好的～另外这周五的评审会需要我做汇报吗？', sentAt: hoursAgo(0.5) },
   ],
   'c-102': [
-    { id: 'm-1021', conversationId: 'c-102', senderId: 'u-010', content: '服务器采购的技术参数已经确认，明天提交审批流程', sentAt: hoursAgo(27) },
-    { id: 'm-1022', conversationId: 'c-102', senderId: 'u-001', content: '好，审批的时候把比价单也附上', sentAt: hoursAgo(26) },
+    { id: 'm-1021', conversationId: 'c-102', senderId: 'u-010', type: 'text', attachments: [], content: '服务器采购的技术参数已经确认，明天提交审批流程', sentAt: hoursAgo(27) },
+    { id: 'm-1022', conversationId: 'c-102', senderId: 'u-001', type: 'text', attachments: [], content: '好，审批的时候把比价单也附上', sentAt: hoursAgo(26) },
   ],
   'c-103': [
-    { id: 'm-1031', conversationId: 'c-103', senderId: 'u-030', content: '《差旅报销标准》更新了，9 月之后的单子按新标准复核', sentAt: hoursAgo(4) },
-    { id: 'm-1032', conversationId: 'c-103', senderId: 'u-030', content: '还有几笔待审的单子麻烦尽快看一下', sentAt: hoursAgo(3) },
+    { id: 'm-1031', conversationId: 'c-103', senderId: 'u-030', type: 'text', attachments: [], content: '《差旅报销标准》更新了，9 月之后的单子按新标准复核', sentAt: hoursAgo(4) },
+    { id: 'm-1032', conversationId: 'c-103', senderId: 'u-030', type: 'text', attachments: [], content: '还有几笔待审的单子麻烦尽快看一下', sentAt: hoursAgo(3) },
   ],
   'c-201': [
-    { id: 'm-2011', conversationId: 'c-201', senderId: 'u-010', content: '本周迭代计划已经更新到看板，大家看下', sentAt: hoursAgo(3) },
-    { id: 'm-2012', conversationId: 'c-201', senderId: 'u-011', content: '后端接口周三前可以完成联调', sentAt: hoursAgo(2) },
-    { id: 'm-2013', conversationId: 'c-201', senderId: 'u-002', content: '市场侧的宣传物料周五前交付', sentAt: hoursAgo(1) },
+    { id: 'm-2011', conversationId: 'c-201', senderId: 'u-010', type: 'text', attachments: [], content: '本周迭代计划已经更新到看板，大家看下', sentAt: hoursAgo(3) },
+    { id: 'm-2012', conversationId: 'c-201', senderId: 'u-011', type: 'text', attachments: [], content: '后端接口周三前可以完成联调', sentAt: hoursAgo(2) },
+    { id: 'm-2013', conversationId: 'c-201', senderId: 'u-002', type: 'text', attachments: [], content: '市场侧的宣传物料周五前交付', sentAt: hoursAgo(1) },
   ],
   'c-202': [
-    { id: 'm-2021', conversationId: 'c-202', senderId: 'u-030', content: '新版报销标准已发布，有问题在这里集中反馈', sentAt: daysAgo(2) },
-    { id: 'm-2022', conversationId: 'c-202', senderId: 'u-040', content: '收到', sentAt: daysAgo(2) },
+    { id: 'm-2021', conversationId: 'c-202', senderId: 'u-030', type: 'text', attachments: [], content: '新版报销标准已发布，有问题在这里集中反馈', sentAt: daysAgo(2) },
+    { id: 'm-2022', conversationId: 'c-202', senderId: 'u-040', type: 'text', attachments: [], content: '收到', sentAt: daysAgo(2) },
   ],
 }
 

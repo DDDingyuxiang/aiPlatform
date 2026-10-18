@@ -19,3 +19,9 @@ __pycache__/
 # 日志与系统文件
 *.log
 .DS_Store
+
+# claude code文件
+.claude
+
+# 聊天附件本地存储（运行期生成）
+backend/storage/

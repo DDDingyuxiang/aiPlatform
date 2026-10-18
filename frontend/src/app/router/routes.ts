@@ -13,7 +13,9 @@ import NotFoundView from '@/app/views/NotFoundView.vue'
 import PlaceholderView from '@/app/views/PlaceholderView.vue'
 import { DashboardView } from '@/modules/dashboard'
 import { LoginView, ProfileView } from '@/modules/auth'
+import { AiChatView } from '@/modules/ai'
 import { ChatView } from '@/modules/chat'
+import { MemberProfileView } from '@/modules/identity'
 import { TaskCenterView } from '@/modules/tasks'
 import { WorkflowCenterView } from '@/modules/workflows'
 import { KnowledgeView } from '@/modules/knowledge'
@@ -49,15 +51,23 @@ export const routes: RouteRecordRaw[] = [
         meta: { titleKey: 'auth.profile', icon: 'user' },
       },
       {
-        path: 'chat',
-        name: 'chat',
-        component: ChatView,
-        meta: { titleKey: 'nav.chat', icon: 'chat', fluid: true },
+        path: 'members/:memberId',
+        name: 'member-profile',
+        component: MemberProfileView,
+        meta: { titleKey: 'nav.members', icon: 'user' },
       },
       {
-        path: 'chat/:conversationId',
-        name: 'chat-thread',
+        // 员工私聊/群聊（与「智能对话」的 AI 问答相互独立）
+        path: 'messages/:conversationId',
+        name: 'messages-thread',
         component: ChatView,
+        meta: { titleKey: 'nav.messages', icon: 'chat', fluid: true },
+      },
+      {
+        // 智能对话：直接向 AI 提问
+        path: 'chat',
+        name: 'chat',
+        component: AiChatView,
         meta: { titleKey: 'nav.chat', icon: 'chat', fluid: true },
       },
       {

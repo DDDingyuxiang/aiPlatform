@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseAvatar from '@/shared/components/base/BaseAvatar.vue'
 import { formatDateTime } from '@/shared/utils/format'
+import MessageAttachmentItem from './MessageAttachmentItem.vue'
 import type { Conversation, Message } from '../types'
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const props = defineProps<{
 const { locale } = useI18n()
 
 const timeTitle = computed(() => formatDateTime(props.message.sentAt, locale.value))
+const hasText = computed(() => props.message.content.trim().length > 0)
 </script>
 
 <template>
@@ -23,7 +25,21 @@ const timeTitle = computed(() => formatDateTime(props.message.sentAt, locale.val
     <BaseAvatar v-if="!mine" :name="senderName" :size="32" class="msg__avatar" />
     <div class="msg__content">
       <p v-if="!mine && conversation.type === 'group'" class="msg__sender">{{ senderName }}</p>
-      <div class="msg__bubble" :title="timeTitle">{{ message.content }}</div>
+      <div
+        class="msg__bubble"
+        :class="{ 'msg__bubble--media': !hasText && message.attachments.length > 0 }"
+        :title="timeTitle"
+      >
+        <p v-if="hasText" class="msg__text">{{ message.content }}</p>
+        <div v-if="message.attachments.length" class="msg__attachments">
+          <MessageAttachmentItem
+            v-for="attachment in message.attachments"
+            :key="attachment.id"
+            :conversation-id="message.conversationId"
+            :attachment="attachment"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -67,14 +83,38 @@ const timeTitle = computed(() => formatDateTime(props.message.sentAt, locale.val
   font-size: var(--font-md);
   line-height: 1.6;
   color: var(--color-text-1);
-  white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+.msg__bubble--media {
+  padding: 6px;
+  background: transparent;
+  border-color: transparent;
+}
+
+.msg__text {
+  white-space: pre-wrap;
+}
+
+.msg__attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.msg__text + .msg__attachments {
+  margin-top: 6px;
 }
 
 .msg--mine .msg__bubble {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: var(--color-primary-contrast);
+}
+
+.msg--mine .msg__bubble--media {
+  background: transparent;
+  border-color: transparent;
 }
 </style>

@@ -7,7 +7,7 @@ import type { DatabaseConfig } from '../config/database.js'
  * - BIGINT 以字符串返回，避免超出 JS 安全整数范围后精度丢失。
  */
 export function createDatabasePool(config: DatabaseConfig): Pool {
-  return mysql.createPool({
+  const pool = mysql.createPool({
     host: config.host,
     port: config.port,
     database: config.database,
@@ -22,6 +22,15 @@ export function createDatabasePool(config: DatabaseConfig): Pool {
     supportBigNumbers: true,
     bigNumberStrings: true,
   })
+
+  // timezone: 'Z' 只影响客户端解析；DEFAULT CURRENT_TIMESTAMP / ON UPDATE
+  // 仍使用服务器会话时区。这里把每个新连接的会话时区固定为 UTC，
+  // 保证库中 DATETIME 与接口输出的 ISO 时间一致。
+  pool.pool.on('connection', (connection) => {
+    connection.query("SET time_zone = '+00:00'")
+  })
+
+  return pool
 }
 
 /** 健康检查：连接不可用时抛出异常 */

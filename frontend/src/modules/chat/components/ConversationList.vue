@@ -31,7 +31,7 @@ const sections = computed(() =>
 
 function open(conversation: Conversation): void {
   preferences.closeMobileNav()
-  void router.push(`/chat/${conversation.id}`)
+  void router.push(`/messages/${conversation.id}`)
 }
 
 function time(iso: string): string {

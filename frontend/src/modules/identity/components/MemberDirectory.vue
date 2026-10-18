@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/shared/components/Icon.vue'
 import BaseAvatar from '@/shared/components/base/BaseAvatar.vue'
 import BaseButton from '@/shared/components/base/BaseButton.vue'
 import { useAuthStore } from '@/core/auth/store'
 import { usePreferencesStore } from '@/core/preferences/store'
+import { toast } from '@/shared/composables/useToast'
 import { useChatStore } from '@/modules/chat'
 import { useIdentityStore } from '../store'
 import type { Member } from '../types'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const preferences = usePreferencesStore()
@@ -22,6 +24,11 @@ const selectMode = ref(false)
 const selectedIds = ref(new Set<string>())
 const expandedDepts = ref(new Set<string>())
 const busy = ref(false)
+
+/** 当前正在查看的成员（用于高亮） */
+const activeMemberId = computed(() =>
+  typeof route.params.memberId === 'string' ? route.params.memberId : '',
+)
 
 onMounted(() => {
   void identity.loadDirectory()
@@ -70,22 +77,19 @@ function exitSelectMode(): void {
   selectedIds.value = new Set()
 }
 
-/** 点击成员：多选模式下切换勾选，否则发起（或复用）私聊 */
-async function onMemberClick(member: Member): Promise<void> {
+function enterSelectMode(): void {
+  selectMode.value = true
+}
+
+/** 点击成员：多选模式下切换勾选，普通模式下进入右侧成员信息页 */
+function onMemberClick(member: Member): void {
   if (member.id === auth.user?.id) return
   if (selectMode.value) {
     toggleSelect(member.id)
     return
   }
-  if (busy.value) return
-  busy.value = true
-  try {
-    const conversation = await chat.ensureDirectConversation(member.id)
-    preferences.closeMobileNav()
-    await router.push(`/chat/${conversation.id}`)
-  } finally {
-    busy.value = false
-  }
+  preferences.closeMobileNav()
+  void router.push({ name: 'member-profile', params: { memberId: member.id } })
 }
 
 async function startGroup(): Promise<void> {
@@ -95,7 +99,9 @@ async function startGroup(): Promise<void> {
     const conversation = await chat.createGroupConversation([...selectedIds.value])
     exitSelectMode()
     preferences.closeMobileNav()
-    await router.push(`/chat/${conversation.id}`)
+    await router.push(`/messages/${conversation.id}`)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : t('panel.members.chatFailed'))
   } finally {
     busy.value = false
   }
@@ -106,7 +112,7 @@ async function startGroup(): Promise<void> {
   <div class="members">
     <div class="members__toolbar">
       <template v-if="!selectMode">
-        <button class="members__text-btn" @click="selectMode = true">
+        <button class="members__text-btn" @click="enterSelectMode">
           <Icon name="check-circle" :size="14" />
           {{ t('panel.members.selectMode') }}
         </button>
@@ -144,6 +150,7 @@ async function startGroup(): Promise<void> {
             :class="{
               'member--selected': selectedIds.has(member.id),
               'member--self': member.id === auth.user?.id,
+              'member--active': activeMemberId === member.id,
             }"
             @click="onMemberClick(member)"
           >
@@ -160,6 +167,12 @@ async function startGroup(): Promise<void> {
               </span>
               <span class="member__position u-truncate">{{ member.position }}</span>
             </span>
+            <Icon
+              v-if="!selectMode && member.id !== auth.user?.id"
+              name="chevron-right"
+              :size="13"
+              class="member__chevron"
+            />
           </button>
         </li>
       </ul>
@@ -294,6 +307,15 @@ async function startGroup(): Promise<void> {
 
 .member--selected {
   background: var(--color-primary-soft);
+}
+
+.member--active {
+  background: var(--color-primary-soft);
+}
+
+.member__chevron {
+  flex-shrink: 0;
+  color: var(--color-text-3);
 }
 
 .member--self {

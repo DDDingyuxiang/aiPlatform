@@ -57,7 +57,7 @@ export default {
     name: '姓名',
     namePlaceholder: '请输入姓名',
     email: '邮箱',
-    emailPlaceholder: 'name@example.com',
+    emailPlaceholder: "name{'@'}example.com",
     phone: '手机号',
     phonePlaceholder: '选填',
     position: '职位',

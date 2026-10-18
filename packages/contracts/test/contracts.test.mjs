@@ -7,6 +7,10 @@ import {
   adminEmployeeUpdateSchema,
   adminRolesResultSchema,
   approvalItemSchema,
+  chatMessageSchema,
+  conversationSchema,
+  createConversationSchema,
+  sendMessageSchema,
   attendanceResultSchema,
   createApprovalPayloadSchema,
   decisionPayloadSchema,
@@ -114,6 +118,51 @@ test('新建员工必须提供初始密码，更新禁止修改用户名/工号'
     adminEmployeeUpdateSchema.safeParse({ username: 'other' }).success,
     false,
   )
+})
+
+test('会话与消息契约支持文本与附件', () => {
+  const conversation = conversationSchema.parse({
+    id: '01J00000000000000000000020',
+    type: 'direct',
+    name: '李思',
+    participants: [
+      { id: '01J00000000000000000000002', name: '王立' },
+      { id: '01J00000000000000000000003', name: '李思' },
+    ],
+    unread: 0,
+    updatedAt: '2026-10-18T00:00:00Z',
+    lastMessage: '[文件] 需求说明.txt',
+  })
+  assert.equal(conversation.participants.length, 2)
+
+  const message = chatMessageSchema.parse({
+    id: '1',
+    conversationId: conversation.id,
+    senderId: '01J00000000000000000000002',
+    content: '请查收',
+    type: 'file',
+    attachments: [
+      {
+        id: '5',
+        fileName: '需求说明.txt',
+        mimeType: 'text/plain',
+        sizeBytes: 58,
+      },
+    ],
+    sentAt: '2026-10-18T00:00:00Z',
+  })
+  assert.equal(message.attachments[0].fileName, '需求说明.txt')
+  assert.equal(chatMessageSchema.safeParse({ ...message, type: 'audio' }).success, false)
+})
+
+test('创建会话与发送消息的请求校验', () => {
+  assert.equal(
+    createConversationSchema.safeParse({ memberIds: ['01J00000000000000000000003'] }).success,
+    true,
+  )
+  assert.equal(createConversationSchema.safeParse({ memberIds: [] }).success, false)
+  assert.equal(sendMessageSchema.safeParse({ content: '   ' }).success, false)
+  assert.equal(sendMessageSchema.safeParse({ content: '你好' }).success, true)
 })
 
 test('管理端角色总览契约', () => {

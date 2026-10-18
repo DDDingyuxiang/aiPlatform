@@ -15,6 +15,8 @@ export interface CreateAppOptions {
   identityRouter: Router
   /** identity 模块导出的管理端路由（需超管权限） */
   adminRouter: Router
+  /** conversations 模块导出的对话路由 */
+  conversationsRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -35,7 +37,7 @@ export function createApp(options: CreateAppOptions): Express {
     cors({
       origin: options.corsOrigins,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-File-Type'],
       exposedHeaders: ['X-Request-Id'],
       maxAge: 600,
     }),
@@ -59,6 +61,7 @@ export function createApp(options: CreateAppOptions): Express {
   api.use('/auth', options.authRouter)
   api.use('/identity', options.identityRouter)
   api.use('/admin', options.adminRouter)
+  api.use('/chat', options.conversationsRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

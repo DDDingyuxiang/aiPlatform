@@ -2,6 +2,7 @@
 export default {
   dashboard: '工作台',
   chat: '智能对话',
+  messages: '消息',
   summaries: '对话总结',
   tasks: '任务',
   workflows: '审批中心',

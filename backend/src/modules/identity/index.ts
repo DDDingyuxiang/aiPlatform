@@ -1,5 +1,5 @@
 /** identity 模块唯一公共入口：跨模块只能经由本文件引用 */
-export { createAuthMiddleware } from './auth-middleware.js'
+export { createAuthMiddleware, requireAuthContext } from './auth-middleware.js'
 export { createAuthRouter } from './router.js'
 export { createIdentityRouter } from './identity-router.js'
 export { createAdminRouter } from './admin-router.js'

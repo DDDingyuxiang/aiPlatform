@@ -2,6 +2,7 @@
 export { useIdentityStore } from './store'
 export { default as ProfileCard } from './components/ProfileCard.vue'
 export { default as MemberDirectory } from './components/MemberDirectory.vue'
+export { default as MemberProfileView } from './MemberProfileView.vue'
 /** 组织成员演示数据：供其他模块的 Mock 复用，后端 identity 就绪后随各 Mock 一并删除 */
 export { MEMBERS } from './data'
 export type {

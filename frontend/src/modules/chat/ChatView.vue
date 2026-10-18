@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/shared/components/Icon.vue'
@@ -22,6 +22,8 @@ const chat = useChatStore()
 const draft = ref('')
 const listRef = ref<HTMLElement | null>(null)
 const composerRef = ref<InstanceType<typeof BaseTextarea> | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+let refreshTimer: number | undefined
 
 const conversationId = computed(() =>
   typeof route.params.conversationId === 'string' ? route.params.conversationId : null,
@@ -38,8 +40,11 @@ const typingName = computed(() =>
 
 watch(
   conversationId,
-  (id) => {
-    if (id) void chat.openConversation(id)
+  async (id) => {
+    if (!id) return
+    // 直接刷新 /messages/:id 时，会话列表可能尚未加载
+    await chat.loadConversations()
+    await chat.openConversation(id)
   },
   { immediate: true },
 )
@@ -48,6 +53,17 @@ watch(
   () => [messages.value.length, typingName.value],
   () => scrollToBottom(),
 )
+
+/** 首期用轮询同步新消息；后续接入 WebSocket/SSE 后移除 */
+onMounted(() => {
+  refreshTimer = window.setInterval(() => {
+    if (!document.hidden) void chat.refreshActive()
+  }, 5000)
+})
+
+onBeforeUnmount(() => {
+  if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
+})
 
 function scrollToBottom(): void {
   void nextTick(() => {
@@ -81,6 +97,25 @@ function onKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     void onSend()
   }
+}
+
+function pickFile(): void {
+  fileInputRef.value?.click()
+}
+
+async function onFileSelected(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  const ok = await chat.sendAttachment(file, draft.value)
+  if (ok) {
+    draft.value = ''
+    void nextTick(() => composerRef.value?.resize())
+  } else {
+    toast.error(t('chat.sendFileFailed'))
+  }
+  input.value = ''
 }
 </script>
 
@@ -136,7 +171,27 @@ function onKeydown(event: KeyboardEvent): void {
           @keydown="onKeydown"
         />
         <div class="chat__composer-bar">
-          <span class="chat__hint">{{ t('chat.composer.hint') }}</span>
+          <div class="chat__composer-tools">
+            <input
+              ref="fileInputRef"
+              class="chat__file-input"
+              type="file"
+              @change="onFileSelected"
+            />
+            <BaseButton
+              variant="ghost"
+              size="sm"
+              icon-only
+              :disabled="chat.sending || chat.uploading"
+              :loading="chat.uploading"
+              :aria-label="t('chat.composer.attach')"
+              :title="t('chat.composer.attach')"
+              @click="pickFile"
+            >
+              <template #icon><Icon name="paperclip" :size="16" /></template>
+            </BaseButton>
+            <span class="chat__hint">{{ t('chat.composer.hint') }}</span>
+          </div>
           <BaseButton
             variant="primary"
             :disabled="!draft.trim()"
@@ -290,6 +345,17 @@ function onKeydown(event: KeyboardEvent): void {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+.chat__composer-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.chat__file-input {
+  display: none;
 }
 
 .chat__hint {

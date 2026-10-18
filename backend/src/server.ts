@@ -13,6 +13,12 @@ import {
   createRequireAnyPermission,
   createTokenService,
 } from './modules/identity/index.js'
+import {
+  createConversationsRouter,
+  createConversationsService,
+  createLocalAttachmentStorage,
+  createMySqlConversationsRepository,
+} from './modules/conversations/index.js'
 import { createLogger } from './shared/logger.js'
 
 async function main(): Promise<void> {
@@ -35,6 +41,12 @@ async function main(): Promise<void> {
     logger,
     timezone: config.timezone,
   })
+  const conversationsService = createConversationsService({
+    repository: createMySqlConversationsRepository(pool),
+    storage: createLocalAttachmentStorage(config.chat.uploadDir),
+    maxUploadBytes: config.chat.maxUploadBytes,
+    logger,
+  })
   const requireAuth = createAuthMiddleware(tokens)
   const requireAnyPermission = createRequireAnyPermission(identityService)
   const authRouter = createAuthRouter({ service: identityService, requireAuth })
@@ -44,11 +56,17 @@ async function main(): Promise<void> {
     requireAuth,
     requireAnyPermission,
   })
+  const conversationsRouter = createConversationsRouter({
+    service: conversationsService,
+    requireAuth,
+    maxUploadBytes: config.chat.maxUploadBytes,
+  })
 
   const app = createApp({
     authRouter,
     identityRouter,
     adminRouter,
+    conversationsRouter,
     healthCheck: () => pingDatabase(pool),
     corsOrigins: config.corsOrigins,
     logger,

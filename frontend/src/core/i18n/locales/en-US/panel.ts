@@ -22,6 +22,10 @@ export default {
       sun: 'Su',
     },
   },
+  ai: {
+    entryTitle: 'Ask AI',
+    entryDesc: 'Analysis, writing and workflow suggestions',
+  },
   members: {
     myDept: 'My department',
     selectMode: 'Select',
@@ -29,6 +33,11 @@ export default {
     selected: '{count} selected',
     startGroup: 'New group chat',
     self: 'Me',
+    selfHint: 'This is your own profile, so you cannot start a conversation with yourself.',
+    chat: 'Chat',
+    chatFailed: 'Failed to start the conversation, please retry',
+    infoTitle: 'Member info',
+    notFound: 'The member does not exist or has left.',
   },
   chatList: {
     direct: 'Direct',
