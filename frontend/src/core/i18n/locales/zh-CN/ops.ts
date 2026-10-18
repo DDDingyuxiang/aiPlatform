@@ -42,6 +42,7 @@ export default {
     },
     saved: '任务已创建',
     updated: '任务状态已更新',
+    aiCreated: 'AI 已创建任务：{title}',
     empty: '暂无任务',
     creator: '创建人',
     dueLabel: '截止',

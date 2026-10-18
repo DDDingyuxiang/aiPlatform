@@ -7,8 +7,13 @@ import type {
 } from '@aiplatform/contracts'
 import { AppError, ErrorCode } from '../../http/errors.js'
 import type { Logger } from '../../shared/logger.js'
+import { formatDateTimeInTimeZone } from '../../shared/time-zone.js'
 import { userTopic, type RealtimeBus } from '../../infra/realtime.js'
 import type { AuthContext } from '../identity/index.js'
+import {
+  hasFutureTimeExpression,
+  type ChatTaskExtractor,
+} from '../tasks/index.js'
 import type { UnreadStore } from './unread-store.js'
 import type {
   AttachmentStorage,
@@ -25,6 +30,10 @@ export interface ConversationsServiceOptions {
   realtime: RealtimeBus
   /** Redis 未读数 */
   unread: UnreadStore
+  /** 业务时区，用于 AI 任务抽取与提示文案 */
+  timezone: string
+  /** 对话中的未来时间表达触发 AI 创建任务；未注入时不启用 */
+  taskExtractor?: ChatTaskExtractor
   logger?: Logger
   /** 单个附件大小上限（字节）；路由层会先做一次同样的限制 */
   maxUploadBytes: number
@@ -118,7 +127,16 @@ function messagePreview(message: ChatMessage): string {
 export function createConversationsService(
   options: ConversationsServiceOptions,
 ): ConversationsService {
-  const { repository, storage, realtime, unread, logger, maxUploadBytes } = options
+  const {
+    repository,
+    storage,
+    realtime,
+    unread,
+    timezone,
+    taskExtractor,
+    logger,
+    maxUploadBytes,
+  } = options
 
   function notFound(message = '会话不存在'): AppError {
     return new AppError(ErrorCode.NOT_FOUND, message, 404)
@@ -151,7 +169,9 @@ export function createConversationsService(
     auth: AuthContext,
     conversation: ConversationRecord,
     messageRecord: MessageRecord,
+    options: { incrementUnread?: boolean; notify?: boolean } = {},
   ): Promise<ChatMessage> {
+    const { incrementUnread = true, notify = true } = options
     const message = toChatMessage(messageRecord)
     const preview = messagePreview(message)
     const sender = conversation.participants.find(
@@ -160,11 +180,17 @@ export function createConversationsService(
 
     // 先完成未读数累加，再推送消息事件：
     // 否则客户端收到事件后调用“已读”可能早于累加完成，未读数会残留。
-    const unreadTasks = conversation.participants
-      .filter((participant) => participant.employeeId !== auth.employeeId)
-      .map((participant) =>
-        unread.increment(auth.tenantId, participant.employeeId, conversation.publicId),
-      )
+    const unreadTasks = incrementUnread
+      ? conversation.participants
+          .filter((participant) => participant.employeeId !== auth.employeeId)
+          .map((participant) =>
+            unread.increment(
+              auth.tenantId,
+              participant.employeeId,
+              conversation.publicId,
+            ),
+          )
+      : []
     await Promise.allSettled(unreadTasks)
 
     const publishTasks: Array<Promise<unknown>> = []
@@ -183,7 +209,7 @@ export function createConversationsService(
         }),
       )
 
-      if (participant.employeeId === auth.employeeId) continue
+      if (!notify || participant.employeeId === auth.employeeId) continue
 
       publishTasks.push(
         realtime.publish(userTopic(auth.tenantId, participant.employeeId), {
@@ -210,6 +236,107 @@ export function createConversationsService(
     }
 
     return message
+  }
+
+  /**
+   * 对话中出现未来时间表达时，异步让 AI 判断并创建任务。
+   *
+   * 不阻塞消息发送；失败只记录日志。任务创建成功后：
+   * 1. 向负责人/创建人推送 task.created；
+   * 2. 在会话中插入一条 system 消息作为可见反馈（不增加未读）。
+   */
+  async function analyzeTaskFromMessage(
+    auth: AuthContext,
+    conversation: ConversationRecord,
+    messageRecord: MessageRecord,
+  ): Promise<void> {
+    if (!taskExtractor || !hasFutureTimeExpression(messageRecord.content)) return
+
+    try {
+      const history = await repository.listMessages(
+        auth.tenantId,
+        conversation.conversationId,
+      )
+      const nameByPublicId = new Map(
+        conversation.participants.map((participant) => [
+          participant.publicId,
+          participant.name,
+        ]),
+      )
+      // 系统消息是 AI 生成的任务通知，不作为新一轮任务抽取的上下文
+      const recentMessages = history
+        .filter((message) => message.type !== 'system')
+        .slice(-10)
+        .map((message) => ({
+          senderId: message.senderPublicId,
+          senderName: nameByPublicId.get(message.senderPublicId) ?? '',
+          content: message.content,
+          sentAt: message.sentAt,
+        }))
+
+      const result = await taskExtractor.analyzeChatMessage({
+        auth,
+        conversation: {
+          conversationId: conversation.conversationId,
+          publicId: conversation.publicId,
+          type: conversation.type,
+          title: conversation.title,
+          participants: conversation.participants.map((participant) => ({
+            employeeId: participant.employeeId,
+            publicId: participant.publicId,
+            name: participant.name,
+          })),
+        },
+        message: {
+          id: messageRecord.id,
+          senderPublicId: messageRecord.senderPublicId,
+          content: messageRecord.content,
+          sentAt: messageRecord.sentAt,
+        },
+        recentMessages,
+        timezone,
+      })
+
+      if (!result) return
+
+      const taskEvent = {
+        type: 'task.created',
+        payload: {
+          conversationId: conversation.publicId,
+          task: result.task,
+        },
+      }
+      const recipients = [...new Set([
+        result.assigneeEmployeeId,
+        result.creatorEmployeeId,
+      ])]
+      await Promise.allSettled(
+        recipients.map((employeeId) =>
+          realtime.publish(userTopic(auth.tenantId, employeeId), taskEvent),
+        ),
+      )
+
+      const dueLabel = formatDateTimeInTimeZone(result.task.dueAt, timezone)
+      const notice =
+        `AI 已根据对话创建任务「${result.task.title}」，` +
+        `负责人：${result.assigneeName}，截止：${dueLabel}`
+      const systemMessage = await repository.createMessage(
+        auth.tenantId,
+        conversation,
+        auth.employeeId,
+        { type: 'system', content: notice },
+      )
+      await publishMessage(auth, conversation, systemMessage, {
+        incrementUnread: false,
+        notify: false,
+      })
+    } catch (error) {
+      logger?.warn('conversations.task_extraction_failed', {
+        conversationId: conversation.publicId,
+        messageId: messageRecord.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   return {
@@ -306,7 +433,10 @@ export function createConversationsService(
         auth.employeeId,
         { type: 'text', content: payload.content },
       )
-      return publishMessage(auth, conversation, message)
+      const chatMessage = await publishMessage(auth, conversation, message)
+      // 任务抽取是增强能力，异步执行，不阻塞消息发送
+      void analyzeTaskFromMessage(auth, conversation, message)
+      return chatMessage
     },
 
     async sendAttachment(auth, conversationId, input) {

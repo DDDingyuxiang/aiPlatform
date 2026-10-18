@@ -21,7 +21,12 @@ const hasText = computed(() => props.message.content.trim().length > 0)
 </script>
 
 <template>
-  <div class="msg" :class="{ 'msg--mine': mine }">
+  <!-- 系统消息（例如 AI 创建任务通知）居中展示，不显示头像与发送者 -->
+  <div v-if="message.type === 'system'" class="msg-system" :title="timeTitle">
+    {{ message.content }}
+  </div>
+
+  <div v-else class="msg" :class="{ 'msg--mine': mine }">
     <BaseAvatar v-if="!mine" :name="senderName" :size="32" class="msg__avatar" />
     <div class="msg__content">
       <p v-if="!mine && conversation.type === 'group'" class="msg__sender">{{ senderName }}</p>
@@ -49,6 +54,20 @@ const hasText = computed(() => props.message.content.trim().length > 0)
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
+}
+
+.msg-system {
+  align-self: center;
+  max-width: 86%;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-3);
+  font-size: var(--font-xs);
+  line-height: 1.6;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .msg--mine {

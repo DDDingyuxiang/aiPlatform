@@ -25,6 +25,13 @@ import {
   createMySqlConversationsRepository,
   createRedisUnreadStore,
 } from './modules/conversations/index.js'
+import { createAiRouter, createAiService } from './modules/ai/index.js'
+import {
+  createAiTaskAnalyzer,
+  createMySqlTasksRepository,
+  createTasksRouter,
+  createTasksService,
+} from './modules/tasks/index.js'
 import { createLogger } from './shared/logger.js'
 
 async function main(): Promise<void> {
@@ -62,11 +69,23 @@ async function main(): Promise<void> {
     config.redis.channelPrefix,
     logger,
   )
+  const tasksService = createTasksService({
+    repository: createMySqlTasksRepository(pool),
+    analyzer: createAiTaskAnalyzer({
+      serviceUrl: config.ai.serviceUrl,
+      timeoutMs: config.ai.timeoutMs,
+      logger,
+    }),
+    timezone: config.timezone,
+    logger,
+  })
   const conversationsService = createConversationsService({
     repository: createMySqlConversationsRepository(pool),
     storage: createLocalAttachmentStorage(config.chat.uploadDir),
     realtime,
     unread: createRedisUnreadStore(redis, logger),
+    timezone: config.timezone,
+    taskExtractor: tasksService,
     maxUploadBytes: config.chat.maxUploadBytes,
     logger,
   })
@@ -86,12 +105,21 @@ async function main(): Promise<void> {
     validateSession: (sessionId) => sessions.exists(sessionId),
     maxUploadBytes: config.chat.maxUploadBytes,
   })
+  const aiService = createAiService({
+    serviceUrl: config.ai.serviceUrl,
+    timeoutMs: config.ai.timeoutMs,
+    logger,
+  })
+  const aiRouter = createAiRouter({ service: aiService, requireAuth })
+  const tasksRouter = createTasksRouter({ service: tasksService, requireAuth })
 
   const app = createApp({
     authRouter,
     identityRouter,
     adminRouter,
     conversationsRouter,
+    aiRouter,
+    tasksRouter,
     healthCheck: async () => {
       await pingDatabase(pool)
       await pingRedis(redis)

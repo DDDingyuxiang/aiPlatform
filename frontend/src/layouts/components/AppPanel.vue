@@ -6,6 +6,8 @@
  * 移动端（<768px）收入抽屉，由 preferences.mobileNavOpen 控制。
  */
 import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { onRealtimeEvent } from '@/core/realtime'
+import { toast } from '@/shared/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import Icon from '@/shared/components/Icon.vue'
@@ -32,11 +34,24 @@ const tasks = useTasksStore()
 const workflows = useWorkflowsStore()
 const announcements = useAnnouncementsStore()
 
+let unsubscribeTaskCreated: (() => void) | undefined
+
 onMounted(() => {
   chat.connectRealtime()
+  unsubscribeTaskCreated = onRealtimeEvent('task.created', (event) => {
+    const payload = event.payload as {
+      task?: { title?: string }
+    }
+    void tasks.refresh()
+    if (payload.task?.title) {
+      toast.info(t('ops.tasks.aiCreated', { title: payload.task.title }))
+    }
+  })
 })
 
 onBeforeUnmount(() => {
+  unsubscribeTaskCreated?.()
+  unsubscribeTaskCreated = undefined
   chat.disconnectRealtime()
 })
 

@@ -8,7 +8,9 @@ export default {
   placeholder: '向 AI 提问…',
   hint: 'Enter 发送，Shift + Enter 换行',
   send: '发送',
-  notConfigured: 'AI 模型服务尚未配置，当前无法生成回答。请在接入模型服务后重试。',
+  thinking: '正在生成…',
+  failed: 'AI 服务暂时不可用，请稍后重试。',
+  clear: '新对话',
   suggestions: {
     summary: '帮我总结本周重点工作',
     plan: '为下周制定一份工作安排',

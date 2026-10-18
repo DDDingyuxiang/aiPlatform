@@ -1,0 +1,50 @@
+# 可选覆盖：把 Ollama 也放进 Docker（模型从 Ollama 仓库拉取）。
+# 用法：docker compose -f docker-compose.yml -f docker-compose.ollama.yml up -d --build
+#
+# 注意：OLLAMA_DOCKER_MODEL 必须是 Ollama 仓库中的模型名（例如 qwen3:4b），
+# 本机自定义模型名（qwen3-local:latest）只存在于宿主机 Ollama 中。
+services:
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      # 默认避开宿主机已占用的 11434
+      - "${OLLAMA_PORT:-11435}:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+    # NVIDIA GPU（可选）：取消注释并确保宿主机安装 nvidia-container-toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull ${OLLAMA_DOCKER_MODEL:-qwen3:4b}"]
+    restart: "no"
+
+  ai-service:
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_DOCKER_MODEL:-qwen3:4b}
+
+volumes:
+  ollama_data:

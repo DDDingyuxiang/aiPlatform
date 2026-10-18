@@ -17,6 +17,10 @@ export interface CreateAppOptions {
   adminRouter: Router
   /** conversations 模块导出的对话路由 */
   conversationsRouter: Router
+  /** ai 模块导出的 AI 对话路由 */
+  aiRouter: Router
+  /** tasks 模块导出的任务路由 */
+  tasksRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -62,6 +66,8 @@ export function createApp(options: CreateAppOptions): Express {
   api.use('/identity', options.identityRouter)
   api.use('/admin', options.adminRouter)
   api.use('/chat', options.conversationsRouter)
+  api.use('/ai', options.aiRouter)
+  api.use('/tasks', options.tasksRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

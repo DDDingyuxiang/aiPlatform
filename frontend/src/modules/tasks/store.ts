@@ -30,8 +30,8 @@ export const useTasksStore = defineStore('tasks', () => {
 
   const pendingCount = computed(() => myPendingTasks.value.length)
 
-  async function loadAll(): Promise<void> {
-    if (loaded.value || loading.value) return
+  async function loadAll(force = false): Promise<void> {
+    if ((loaded.value && !force) || loading.value) return
     loading.value = true
     try {
       const [taskList, milestoneList] = await Promise.all([tasksApi.list(), tasksApi.milestones()])
@@ -43,6 +43,11 @@ export const useTasksStore = defineStore('tasks', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  /** AI 创建任务等场景下强制刷新 */
+  async function refresh(): Promise<void> {
+    await loadAll(true)
   }
 
   async function create(payload: CreateTaskPayload): Promise<TaskItem> {
@@ -71,6 +76,7 @@ export const useTasksStore = defineStore('tasks', () => {
     myPendingTasks,
     pendingCount,
     loadAll,
+    refresh,
     create,
     setStatus,
     taskById,

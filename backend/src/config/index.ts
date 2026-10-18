@@ -25,6 +25,15 @@ const serverEnvSchema = z
       .min(1024)
       .max(100 * 1024 * 1024)
       .default(20 * 1024 * 1024),
+    /** 独立 AI 服务地址（Python） */
+    AI_SERVICE_URL: z.url().default('http://127.0.0.1:8000'),
+    /** AI 请求超时；本地小模型首次加载可能较慢 */
+    AI_REQUEST_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(600_000)
+      .default(180_000),
   })
   .superRefine((value, ctx) => {
     // 防止把 .env.example 中的示例值直接用于生产
@@ -63,6 +72,11 @@ export interface AppConfig {
   }
   /** Redis 连接与会话/缓存配置 */
   redis: RedisConfig
+  /** AI 能力服务 */
+  ai: {
+    serviceUrl: string
+    timeoutMs: number
+  }
 }
 
 /** 加载并校验运行配置；调用前应已通过 loadEnvFile() 加载 .env */
@@ -84,5 +98,9 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       maxUploadBytes: parsed.CHAT_MAX_UPLOAD_BYTES,
     },
     redis: loadRedisConfig(env.REDIS_CONFIG_PATH, env),
+    ai: {
+      serviceUrl: parsed.AI_SERVICE_URL.replace(/\/+$/, ''),
+      timeoutMs: parsed.AI_REQUEST_TIMEOUT_MS,
+    },
   }
 }

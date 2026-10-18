@@ -42,6 +42,7 @@ export default {
     },
     saved: 'Task created',
     updated: 'Task status updated',
+    aiCreated: 'AI created a task: {title}',
     empty: 'No tasks',
     creator: 'Created by',
     dueLabel: 'Due',

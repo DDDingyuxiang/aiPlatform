@@ -7,6 +7,7 @@ import { defineStore } from 'pinia'
 import { appConfig } from '@/core/config'
 import { useAuthStore } from '@/core/auth/store'
 import { ApiError, http, type ServerSentEvent } from '@/core/http'
+import { emitRealtimeEvent } from '@/core/realtime'
 import { toast } from '@/shared/composables/useToast'
 import { genId } from '@/shared/utils/id'
 import { chatApi } from './api'
@@ -184,7 +185,8 @@ export const useChatStore = defineStore('chat', () => {
     conversation.lastMessage = previewOf(message)
     conversation.updatedAt = message.sentAt
 
-    if (message.senderId === myId) return
+    // 系统消息（AI 任务通知）不产生未读
+    if (message.type === 'system' || message.senderId === myId) return
 
     // 正在查看时由聊天视图在可见满 2 秒后统一标记已读；
     // 其他会话才累加本地未读徽标。
@@ -218,6 +220,9 @@ export const useChatStore = defineStore('chat', () => {
     } catch {
       return
     }
+
+    // 分发给其他业务模块（例如任务模块监听 task.created）
+    emitRealtimeEvent({ type: envelope.type, payload: envelope.payload })
 
     if (envelope.type === 'chat.message') applyIncomingMessage(envelope.payload)
     else if (envelope.type === 'notification') applyNotification(envelope.payload)

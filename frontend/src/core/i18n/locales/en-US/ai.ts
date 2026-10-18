@@ -8,8 +8,9 @@ export default {
   placeholder: 'Ask AI…',
   hint: 'Enter to send, Shift + Enter for a new line',
   send: 'Send',
-  notConfigured:
-    'The AI model service is not configured yet, so no answer can be generated. Please configure it and try again.',
+  thinking: 'Generating…',
+  failed: 'The AI service is temporarily unavailable. Please try again later.',
+  clear: 'New chat',
   suggestions: {
     summary: 'Summarize this week’s key work',
     plan: 'Draft a plan for next week',

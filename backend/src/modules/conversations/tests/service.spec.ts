@@ -93,6 +93,7 @@ function setup(overrides: {
     storage,
     realtime,
     unread,
+    timezone: 'Asia/Shanghai',
     maxUploadBytes: 1024,
   })
 

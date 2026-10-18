@@ -1,0 +1,151 @@
+name: aiplatform
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ai_platform
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/database/mysql:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 独立 AI 服务：默认连接宿主机 Ollama（WSL / Docker Desktop 均通过 host.docker.internal）
+  ai-service:
+    build:
+      context: ./ai-service
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3-local:latest}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-180}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性初始化：建公司、角色、管理员账号与演示考勤
+  seed:
+    image: aiplatform-backend:local
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ai_platform
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?请在 .env 中设置 SEED_ADMIN_PASSWORD}
+      SEED_COMPANY_CODE: ${SEED_COMPANY_CODE:-demo}
+      SEED_COMPANY_NAME: ${SEED_COMPANY_NAME:-演示企业}
+    command: ["node", "dist/scripts/seed-dev.js"]
+
+  backend:
+    image: aiplatform-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+      ai-service:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-7200}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ai_platform
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-180000}
+      CHAT_UPLOAD_DIR: /app/backend/storage/uploads
+      CHAT_MAX_UPLOAD_BYTES: ${CHAT_MAX_UPLOAD_BYTES:-20971520}
+    volumes:
+      - backend_storage:/app/backend/storage
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_storage:

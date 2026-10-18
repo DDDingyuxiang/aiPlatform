@@ -6,6 +6,8 @@ import {
   adminEmployeePageSchema,
   adminEmployeeUpdateSchema,
   adminRolesResultSchema,
+  aiChatRequestSchema,
+  aiChatResponseSchema,
   approvalItemSchema,
   chatMessageSchema,
   conversationSchema,
@@ -15,6 +17,9 @@ import {
   createApprovalPayloadSchema,
   decisionPayloadSchema,
   employeeSchema,
+  extractedTaskSchema,
+  taskCreatePayloadSchema,
+  taskItemSchema,
   loginPayloadSchema,
   monthSchema,
   profileUpdateSchema,
@@ -118,6 +123,65 @@ test('新建员工必须提供初始密码，更新禁止修改用户名/工号'
     adminEmployeeUpdateSchema.safeParse({ username: 'other' }).success,
     false,
   )
+})
+
+test('任务契约支持任务对象、手工创建与 AI 抽取结果', () => {
+  const task = taskItemSchema.parse({
+    id: '01JTASK000000000000000001',
+    title: '提交方案',
+    description: '明天下午3点前发给同事',
+    status: 'todo',
+    priority: 'high',
+    dueAt: '2026-10-19T15:00:00+08:00',
+    assignee: { id: '01J00000000000000000000003', name: '王真' },
+    creator: { id: '01J00000000000000000000002', name: '王立' },
+    progress: 0,
+  })
+  assert.equal(task.status, 'todo')
+
+  const payload = taskCreatePayloadSchema.parse({
+    title: '提交方案',
+    dueAt: '2026-10-19',
+    assigneeId: '01J00000000000000000000003',
+  })
+  assert.equal(payload.priority, undefined)
+  assert.equal(
+    taskCreatePayloadSchema.safeParse({
+      title: '提交方案',
+      dueAt: '2026-10-19T15:00:00Z',
+      assigneeId: '01J00000000000000000000003',
+    }).success,
+    false,
+  )
+
+  const extracted = extractedTaskSchema.parse({
+    create: true,
+    title: '提交方案',
+    dueAt: '2026-10-19T15:00:00+08:00',
+    priority: 'high',
+    assigneeId: '01J00000000000000000000003',
+  })
+  assert.equal(extracted.create, true)
+  assert.equal(extractedTaskSchema.safeParse({ create: false }).success, true)
+})
+
+test('AI 对话契约限制历史条数与消息内容', () => {
+  const request = aiChatRequestSchema.parse({
+    messages: [{ role: 'user', content: '你好' }],
+  })
+  assert.equal(request.messages[0].role, 'user')
+  assert.equal(aiChatRequestSchema.safeParse({ messages: [] }).success, false)
+  assert.equal(
+    aiChatRequestSchema.safeParse({ messages: [{ role: 'user', content: '   ' }] })
+      .success,
+    false,
+  )
+
+  const response = aiChatResponseSchema.parse({
+    message: { role: 'assistant', content: '你好，有什么可以帮你？' },
+    model: 'qwen3-local:latest',
+  })
+  assert.equal(response.model, 'qwen3-local:latest')
 })
 
 test('会话与消息契约支持文本与附件', () => {
