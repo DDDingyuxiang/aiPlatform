@@ -1,9 +1,14 @@
 /** Data & knowledge namespace (knowledge / analytics / announcements) */
 export default {
   knowledge: {
-    subtitle: 'Unified management of enterprise documents and materials',
-    searchPlaceholder: 'Search title or tags',
+    subtitle: 'Manage enterprise documents with semantic search',
+    searchPlaceholder: 'Search titles, tags, or ask a question',
     upload: 'Upload',
+    semantic: {
+      title: 'Semantic search',
+      searching: 'Searching…',
+      empty: 'No semantically related content found',
+    },
     categories: {
       all: 'All',
       policy: 'Policy',
@@ -22,7 +27,7 @@ export default {
     uploadForm: {
       title: 'Upload material',
       drop: 'Click or drag a file here to select',
-      hint: 'PDF / Word / Excel / PPT / images, up to 10MB (files are not actually transferred in this demo)',
+      hint: 'PDF / Word (docx) / Excel (xlsx) / PPTX / TXT / Markdown, up to 10MB; files are parsed and indexed automatically',
       name: 'Material name',
       namePlaceholder: 'Enter a name',
       category: 'Category',
@@ -32,10 +37,15 @@ export default {
       invalidType: 'Unsupported file type',
       tooLarge: 'File exceeds the 10MB limit',
     },
-    uploaded: 'Material uploaded (demo data)',
+    uploaded: 'Material uploaded and indexed',
+    status: {
+      pending: 'Pending',
+      processing: 'Indexing',
+      failed: 'Indexing failed',
+    },
     detail: {
       summary: 'AI summary',
-      summaryEmpty: 'Summary is being generated',
+      summaryEmpty: 'No summary yet',
       download: 'Download',
     },
     empty: 'No materials found',

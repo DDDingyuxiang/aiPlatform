@@ -6,6 +6,7 @@ frontend/dist
 backend/dist
 packages/*/dist
 backend/storage
+models
 ai-service/.venv
 **/__pycache__
 *.log

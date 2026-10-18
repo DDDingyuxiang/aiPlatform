@@ -55,19 +55,36 @@ describe('knowledge store', () => {
     await loginAsAdmin()
     const store = await loadDocs()
 
+    const file = new File(['差旅报销测试内容'], '测试材料.md', {
+      type: 'text/markdown',
+    })
     const pending = store.upload({
+      file,
       title: '测试上传材料',
       category: 'tech',
       tags: ['测试'],
-      fileName: '测试材料.pdf',
-      fileType: 'pdf',
-      sizeBytes: 1024,
     })
     await vi.advanceTimersByTimeAsync(500)
     const doc = await pending
 
     expect(doc.owner.name).toBe('王立')
+    expect(doc.status).toBe('ready')
     expect(store.docs).toHaveLength(10)
     expect(store.docs[0]?.id).toBe(doc.id)
+  })
+
+  it('语义检索返回相关文档分块并丢弃空查询', async () => {
+    await loginAsAdmin()
+    const store = await loadDocs()
+
+    const pending = store.search('差旅')
+    await vi.advanceTimersByTimeAsync(500)
+    await pending
+
+    expect(store.searchHits.length).toBeGreaterThan(0)
+    expect(store.searchHits[0]?.title).toContain('差旅')
+
+    store.clearSearch()
+    expect(store.searchHits).toHaveLength(0)
   })
 })

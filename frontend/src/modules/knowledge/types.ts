@@ -1,46 +1,35 @@
-/** 知识库类型（与后端 knowledge 模块的契约保持一致） */
+/** 知识库类型（来源于共享契约） */
+import type { KnowledgeDocCategory, KnowledgeDocFileType } from '@aiplatform/contracts'
 
-export type DocCategory = 'policy' | 'product' | 'tech' | 'market' | 'training'
-export type DocFileType = 'pdf' | 'doc' | 'xls' | 'ppt' | 'img'
+export type {
+  KnowledgeDoc,
+  KnowledgeDocCategory as DocCategory,
+  KnowledgeDocFileType as DocFileType,
+  KnowledgeDocStatus,
+  KnowledgeSearchHit,
+  KnowledgeSearchResult,
+} from '@aiplatform/contracts'
 
-export interface KnowledgeDoc {
-  id: string
+/** 上传参数：文件本体 + 展示元数据 */
+export interface UploadKnowledgeInput {
+  file: File
   title: string
-  category: DocCategory
-  fileType: DocFileType
-  sizeBytes: number
-  owner: { id: string; name: string }
-  department: string
-  /** ISO 8601 */
-  updatedAt: string
+  category: KnowledgeDocCategory
   tags: string[]
-  /** AI 摘要（由 AI 能力层生成，展示时必须标注来源） */
-  summary: string
 }
 
-export interface UploadDocPayload {
-  title: string
-  category: DocCategory
-  tags: string[]
-  fileName: string
-  fileType: DocFileType
-  sizeBytes: number
-}
-
-/** 允许上传的扩展名 → 文件类型映射（与服务端校验保持一致） */
-export const EXTENSION_TYPE_MAP: Record<string, DocFileType> = {
+/** 允许上传的扩展名 → 文件类型映射（与服务端解析器保持一致） */
+export const EXTENSION_TYPE_MAP: Record<string, KnowledgeDocFileType> = {
   pdf: 'pdf',
-  doc: 'doc',
   docx: 'doc',
   xls: 'xls',
   xlsx: 'xls',
-  ppt: 'ppt',
   pptx: 'ppt',
-  png: 'img',
-  jpg: 'img',
-  jpeg: 'img',
-  gif: 'img',
-  webp: 'img',
+  txt: 'txt',
+  md: 'txt',
 }
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+/** 允许上传的扩展名（用于 input accept） */
+export const ACCEPTED_EXTENSIONS = '.pdf,.docx,.xlsx,.pptx,.txt,.md'

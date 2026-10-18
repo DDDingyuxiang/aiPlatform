@@ -3,6 +3,11 @@ FROM node:24-slim AS build
 
 RUN corepack enable
 
+# 国内环境可通过构建参数切换 npm 镜像源
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+ENV npm_config_registry=${NPM_REGISTRY} \
+    COREPACK_NPM_REGISTRY=${NPM_REGISTRY}
+
 WORKDIR /app
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -10,7 +15,7 @@ COPY packages/contracts/package.json packages/contracts/package.json
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 
-RUN pnpm install --frozen-lockfile \
+RUN pnpm --config.registry="${NPM_REGISTRY}" install --frozen-lockfile \
       --filter frontend... \
       --filter @aiplatform/contracts...
 

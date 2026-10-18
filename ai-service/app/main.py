@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -17,7 +18,13 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from .embeddings import (
+    EMBEDDING_MODEL_NAME,
+    EmbeddingUnavailableError,
+    get_embedder,
+)
 
 logging.basicConfig(
     level=os.getenv("AI_LOG_LEVEL", "INFO").upper(),
@@ -43,6 +50,26 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: ChatMessage
     model: str
+
+
+class EmbeddingRequest(BaseModel):
+    input: list[str] = Field(min_length=1, max_length=64)
+
+    @field_validator("input")
+    @classmethod
+    def validate_texts(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip() for value in values]
+        if any(not value for value in cleaned):
+            raise ValueError("输入文本不能为空")
+        if any(len(value) > 8_000 for value in cleaned):
+            raise ValueError("单条文本不能超过 8000 字符")
+        return cleaned
+
+
+class EmbeddingResponse(BaseModel):
+    model: str
+    dimension: int
+    embeddings: list[list[float]]
 
 
 class TaskParticipant(BaseModel):
@@ -76,10 +103,12 @@ class ExtractedTask(BaseModel):
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info(
-        "ai_service.started ollama=%s model=%s timeout=%.0fs",
+        "ai_service.started ollama=%s model=%s timeout=%.0fs embedding=%s embedding_model=%s",
         OLLAMA_BASE_URL,
         OLLAMA_MODEL,
         OLLAMA_TIMEOUT_SECONDS,
+        get_embedder().status,
+        EMBEDDING_MODEL_NAME,
     )
     yield
 
@@ -95,7 +124,7 @@ async def live() -> dict[str, str]:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    """就绪检查：确认 Ollama 可访问。"""
+    """就绪检查：确认 Ollama 可访问；Embedding 模型状态单独上报，不阻塞对话。"""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
@@ -104,7 +133,36 @@ async def health() -> dict[str, str]:
         logger.warning("ai_service.ollama_unavailable error=%s", exc)
         raise HTTPException(status_code=503, detail="Ollama 不可用") from exc
 
-    return {"status": "ok", "model": OLLAMA_MODEL}
+    return {
+        "status": "ok",
+        "model": OLLAMA_MODEL,
+        "embedding": get_embedder().status,
+        "embeddingModel": EMBEDDING_MODEL_NAME,
+    }
+
+
+@app.post("/v1/embeddings", response_model=EmbeddingResponse)
+async def embeddings(payload: EmbeddingRequest) -> EmbeddingResponse:
+    """使用本地 BGE-M3 生成 dense 向量，供知识库检索与 RAG 使用。"""
+    started = time.monotonic()
+    embedder = get_embedder()
+    try:
+        vectors = await asyncio.to_thread(embedder.embed, payload.input)
+    except EmbeddingUnavailableError as exc:
+        logger.warning("ai_service.embedding_unavailable error=%s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    logger.info(
+        "ai_service.embedding_completed model=%s texts=%d elapsed=%.1fs",
+        EMBEDDING_MODEL_NAME,
+        len(payload.input),
+        time.monotonic() - started,
+    )
+    return EmbeddingResponse(
+        model=EMBEDDING_MODEL_NAME,
+        dimension=len(vectors[0]) if vectors else 0,
+        embeddings=vectors,
+    )
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
@@ -158,8 +216,8 @@ async def chat(payload: ChatRequest) -> ChatResponse:
 TASK_SYSTEM_PROMPT = """你是企业任务抽取助手。根据最近对话判断是否存在需要执行的未来任务。
 
 规则：
-1. 只有当对话中出现未来时间表达（今天、明天、下周、几号、几点等）且包含明确可执行事项时，才创建任务。
-2. 过去时间、假设、玩笑、闲聊或没有具体执行事项时，create=false。
+1. 只有当对话中出现未来时间表达（今天、明天、下周、几号、几点等），并且已经形成明确的安排或执行要求时，才创建任务。
+2. 以下情况 create=false：过去时间；假设、玩笑、闲聊；询问、邀请、征求意见或尚未确认的安排（如“明天你可以参加会议吗？”“明天有空吗？”）；只有时间但没有具体执行事项。
 3. dueAt 必须是未来时间，使用带时区偏移的 ISO 8601 格式，例如 2026-10-19T15:00:00+08:00。
 4. 负责人 assigneeId 必须从参与者 id 中选择。先判断谁需要执行：
    - 消息在要求/委托某位参与者做事（如“王真，把方案发给我”“你明天把报告发我”）时，选被要求的人；
@@ -171,6 +229,9 @@ TASK_SYSTEM_PROMPT = """你是企业任务抽取助手。根据最近对话判�
 没有任务时输出：{"create": false}
 
 示例：
+- “明天你可以参加会议吗？” → 只是询问，尚未形成确定安排，create=false。
+- “明天你有空吗？” → 只是在确认时间，create=false。
+- “明天下午3点开会，请准时参加” → 已明确通知参会，创建任务。
 - 发送者 A 对参与者 B 说“B，明天下午3点前把方案发给我” → assigneeId=B。
 - 发送者 A 说“我明天下午3点前把方案发给你” → assigneeId=A。
 """

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/shared/components/Icon.vue'
 import BaseAvatar from '@/shared/components/base/BaseAvatar.vue'
@@ -8,15 +9,33 @@ import BaseTag from '@/shared/components/base/BaseTag.vue'
 import FileTypeChip from './FileTypeChip.vue'
 import { toast } from '@/shared/composables/useToast'
 import { formatDateTime, formatFileSize } from '@/shared/utils/format'
+import { knowledgeApi } from '../api'
 import type { KnowledgeDoc } from '../types'
 
 const props = defineProps<{ doc: KnowledgeDoc | null }>()
 const emit = defineEmits<{ close: [] }>()
 
 const { t, locale } = useI18n()
+const downloading = ref(false)
 
-function onDownload(): void {
-  toast.info(t('common.comingSoon'))
+async function onDownload(): Promise<void> {
+  if (!props.doc || downloading.value) return
+  downloading.value = true
+  try {
+    const blob = await knowledgeApi.download(props.doc.id)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = props.doc.fileName ?? props.doc.title
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : t('common.empty'))
+  } finally {
+    downloading.value = false
+  }
 }
 </script>
 
@@ -55,17 +74,17 @@ function onDownload(): void {
             <Icon name="sparkles" :size="15" />
             {{ t('intel.knowledge.detail.summary') }}
           </span>
-          <BaseTag tone="ai">{{ t('common.ai.generated') }}</BaseTag>
+          <BaseTag v-if="doc.summary" tone="ai">{{ t('common.ai.generated') }}</BaseTag>
         </div>
         <p class="doc-detail__summary-text">
           {{ doc.summary || t('intel.knowledge.detail.summaryEmpty') }}
         </p>
-        <p class="doc-detail__disclaimer">{{ t('common.ai.disclaimer') }}</p>
+        <p v-if="doc.summary" class="doc-detail__disclaimer">{{ t('common.ai.disclaimer') }}</p>
       </section>
     </div>
 
     <template #footer>
-      <BaseButton variant="primary" @click="onDownload">
+      <BaseButton variant="primary" :loading="downloading" @click="onDownload">
         <template #icon><Icon name="download" :size="15" /></template>
         {{ t('intel.knowledge.detail.download') }}
       </BaseButton>

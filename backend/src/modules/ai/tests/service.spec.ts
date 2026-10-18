@@ -73,6 +73,100 @@ describe('AI service proxy', () => {
     ).rejects.toMatchObject({ status: 502 })
   })
 
+  it('把知识库检索结果注入系统提示并返回引用来源', async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          message: { role: 'assistant', content: '一线城市住宿上限为 600 元。' },
+          model: 'qwen3-local',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const service = createAiService({
+      serviceUrl: 'http://ai.test',
+      timeoutMs: 5_000,
+      systemPrompt: '系统提示',
+      retriever: {
+        retrieve: vi.fn(async () => [
+          {
+            documentId: 'doc-1',
+            title: '差旅费用报销标准',
+            content: '一线城市每晚上限 600 元。',
+            score: 0.82,
+          },
+        ]),
+      },
+    })
+
+    const result = await service.chat(auth, {
+      messages: [{ role: 'user', content: '住宿费上限是多少？' }],
+    })
+
+    expect(result.sources).toEqual([
+      {
+        documentId: 'doc-1',
+        title: '差旅费用报销标准',
+        score: 0.82,
+        excerpt: '一线城市每晚上限 600 元。',
+      },
+    ])
+    const [, init] = fetchMock.mock.calls[0]!
+    const body = JSON.parse(String(init?.body)) as {
+      messages: Array<{ role: string; content: string }>
+    }
+    expect(body.messages[0]?.content).toContain('差旅费用报销标准')
+    expect(body.messages[0]?.content).toContain('一线城市每晚上限 600 元')
+  })
+
+  it('检索失败或相似度过低时退化为普通对话', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            message: { role: 'assistant', content: '普通回答' },
+            model: 'qwen3-local',
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+
+    const failed = createAiService({
+      serviceUrl: 'http://ai.test',
+      timeoutMs: 5_000,
+      retriever: {
+        retrieve: vi.fn(async () => {
+          throw new Error('qdrant down')
+        }),
+      },
+    })
+    await expect(
+      failed.chat(auth, { messages: [{ role: 'user', content: '你好' }] }),
+    ).resolves.toMatchObject({ sources: [] })
+
+    const lowScore = createAiService({
+      serviceUrl: 'http://ai.test',
+      timeoutMs: 5_000,
+      retriever: {
+        retrieve: vi.fn(async () => [
+          {
+            documentId: 'doc-1',
+            title: '无关文档',
+            content: '无关内容',
+            score: 0.1,
+          },
+        ]),
+      },
+    })
+    await expect(
+      lowScore.chat(auth, { messages: [{ role: 'user', content: '你好' }] }),
+    ).resolves.toMatchObject({ sources: [] })
+  })
+
   it('请求超时返回 504', async () => {
     vi.stubGlobal(
       'fetch',

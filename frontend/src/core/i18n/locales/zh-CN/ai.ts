@@ -9,6 +9,7 @@ export default {
   hint: 'Enter 发送，Shift + Enter 换行',
   send: '发送',
   thinking: '正在生成…',
+  sources: '参考来源',
   failed: 'AI 服务暂时不可用，请稍后重试。',
   clear: '新对话',
   suggestions: {

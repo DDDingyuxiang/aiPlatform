@@ -32,6 +32,14 @@ import {
   createTasksRouter,
   createTasksService,
 } from './modules/tasks/index.js'
+import {
+  createKnowledgeRouter,
+  createKnowledgeService,
+  createMySqlKnowledgeRepository,
+} from './modules/knowledge/index.js'
+import { createEmbeddingService } from './modules/ai/index.js'
+import { createLocalFileStorage } from './infra/local-storage.js'
+import { createQdrantVectorStore } from './infra/qdrant.js'
 import { createLogger } from './shared/logger.js'
 
 async function main(): Promise<void> {
@@ -105,13 +113,58 @@ async function main(): Promise<void> {
     validateSession: (sessionId) => sessions.exists(sessionId),
     maxUploadBytes: config.chat.maxUploadBytes,
   })
+  const tasksRouter = createTasksRouter({ service: tasksService, requireAuth })
+
+  const embeddings = createEmbeddingService({
+    serviceUrl: config.ai.serviceUrl,
+    // 向量化是 RAG 的可选前置步骤：失败时应快速降级，不能拖住整个对话
+    timeoutMs: Math.min(config.ai.timeoutMs, 30_000),
+    logger,
+  })
+  const vectorStore = createQdrantVectorStore(config.qdrant, logger)
+  const knowledgeService = createKnowledgeService({
+    repository: createMySqlKnowledgeRepository(pool),
+    embeddings,
+    vectors: vectorStore,
+    storage: createLocalFileStorage(config.knowledge.uploadDir),
+    collectionName: config.qdrant.collection,
+    vectorSize: config.qdrant.vectorSize,
+    maxUploadBytes: config.knowledge.maxUploadBytes,
+    searchLimit: config.knowledge.searchLimit,
+    chunkSize: config.knowledge.chunkSize,
+    chunkOverlap: config.knowledge.chunkOverlap,
+    logger,
+  })
+  const knowledgeRouter = createKnowledgeRouter({
+    service: knowledgeService,
+    requireAuth,
+    maxUploadBytes: config.knowledge.maxUploadBytes,
+  })
   const aiService = createAiService({
     serviceUrl: config.ai.serviceUrl,
     timeoutMs: config.ai.timeoutMs,
     logger,
+    knowledgeMinScore: config.knowledge.minScore,
+    retriever: {
+      async retrieve(auth, query, limit) {
+        const result = await knowledgeService.search(auth, { q: query, limit })
+        return result.hits.map((hit) => ({
+          documentId: hit.documentId,
+          title: hit.title,
+          content: hit.content,
+          score: hit.score,
+        }))
+      },
+    },
   })
   const aiRouter = createAiRouter({ service: aiService, requireAuth })
-  const tasksRouter = createTasksRouter({ service: tasksService, requireAuth })
+
+  // 向量库不可用时不影响聊天/任务；首次检索会自动重试创建
+  void vectorStore.ensureCollection().catch((error: unknown) => {
+    logger.warn('qdrant.startup_check_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  })
 
   const app = createApp({
     authRouter,
@@ -120,6 +173,7 @@ async function main(): Promise<void> {
     conversationsRouter,
     aiRouter,
     tasksRouter,
+    knowledgeRouter,
     healthCheck: async () => {
       await pingDatabase(pool)
       await pingRedis(redis)

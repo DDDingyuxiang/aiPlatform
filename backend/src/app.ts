@@ -21,6 +21,8 @@ export interface CreateAppOptions {
   aiRouter: Router
   /** tasks 模块导出的任务路由 */
   tasksRouter: Router
+  /** knowledge 模块导出的知识库路由 */
+  knowledgeRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -68,6 +70,7 @@ export function createApp(options: CreateAppOptions): Express {
   api.use('/chat', options.conversationsRouter)
   api.use('/ai', options.aiRouter)
   api.use('/tasks', options.tasksRouter)
+  api.use('/knowledge', options.knowledgeRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

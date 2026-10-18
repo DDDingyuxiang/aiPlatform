@@ -9,6 +9,7 @@ const LABEL: Record<DocFileType, string> = {
   xls: 'XLS',
   ppt: 'PPT',
   img: 'IMG',
+  txt: 'TXT',
 }
 </script>
 
@@ -63,5 +64,10 @@ const LABEL: Record<DocFileType, string> = {
 .ftype--img {
   background: var(--color-primary-soft);
   color: var(--color-primary-text);
+}
+
+.ftype--txt {
+  background: var(--color-surface-3);
+  color: var(--color-text-2);
 }
 </style>

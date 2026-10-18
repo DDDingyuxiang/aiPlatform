@@ -1,9 +1,14 @@
 /** 数据与知识命名空间（知识库 / 经营分析 / 公告） */
 export default {
   knowledge: {
-    subtitle: '企业文档与材料统一管理',
-    searchPlaceholder: '搜索文档标题或标签',
+    subtitle: '企业文档与材料统一管理，支持语义检索',
+    searchPlaceholder: '搜索标题、标签，或直接提问',
     upload: '上传材料',
+    semantic: {
+      title: '语义检索',
+      searching: '正在检索…',
+      empty: '没有找到语义相关的内容',
+    },
     categories: {
       all: '全部',
       policy: '制度规范',
@@ -22,7 +27,7 @@ export default {
     uploadForm: {
       title: '上传材料',
       drop: '点击或拖拽文件到此处选择',
-      hint: '支持 PDF / Word / Excel / PPT / 图片，单文件不超过 10MB（演示环境不实际传输文件）',
+      hint: '支持 PDF / Word(docx) / Excel(xlsx) / PPTX / TXT / Markdown，单文件不超过 10MB；上传后自动解析并建立向量索引',
       name: '材料名称',
       namePlaceholder: '填写材料名称',
       category: '文档分类',
@@ -32,10 +37,15 @@ export default {
       invalidType: '不支持的文件类型',
       tooLarge: '文件超过 10MB 限制',
     },
-    uploaded: '材料已上传（演示数据）',
+    uploaded: '材料已上传并完成索引',
+    status: {
+      pending: '待处理',
+      processing: '索引中',
+      failed: '索引失败',
+    },
     detail: {
       summary: 'AI 摘要',
-      summaryEmpty: '摘要生成中，稍后可见',
+      summaryEmpty: '暂无摘要',
       download: '下载',
     },
     empty: '未找到相关材料',

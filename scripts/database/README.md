@@ -11,7 +11,9 @@ scripts/database/
 │   ├── 02_conversations.sql     私聊、群聊与消息
 │   ├── 03_knowledge.sql         知识库、文档与 Embedding 任务
 │   ├── 04_tasks_audit_settings.sql  后台任务、审计与系统配置
-│   └── 05_workflows.sql         审批流程定义与审批单
+│   ├── 05_workflows.sql         审批流程定义与审批单
+│   ├── 06_tasks.sql             业务任务表
+│   └── 07_knowledge_metadata.sql 知识库文档展示元数据
 └── qdrant/                      Qdrant collection 初始化（非 SQL）
     ├── README.md
     └── create_collection.sh

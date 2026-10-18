@@ -18,6 +18,10 @@ import {
   decisionPayloadSchema,
   employeeSchema,
   extractedTaskSchema,
+  knowledgeDocSchema,
+  knowledgeSearchHitSchema,
+  knowledgeSearchQuerySchema,
+  knowledgeUploadQuerySchema,
   taskCreatePayloadSchema,
   taskItemSchema,
   taskUpdatePayloadSchema,
@@ -166,6 +170,47 @@ test('任务契约支持任务对象、手工创建与 AI 抽取结果', () => {
   assert.equal(extractedTaskSchema.safeParse({ create: false }).success, true)
 })
 
+test('知识库契约支持文档元数据、上传与语义检索结果', () => {
+  const doc = knowledgeDocSchema.parse({
+    id: '01KDOC0000000000000000001',
+    title: '差旅费用报销标准',
+    category: 'policy',
+    fileType: 'pdf',
+    sizeBytes: 1024,
+    owner: { id: '01J00000000000000000000002', name: '王立' },
+    department: '综合管理部',
+    updatedAt: '2026-10-18T00:00:00Z',
+    tags: ['报销', '差旅'],
+    summary: '',
+    status: 'ready',
+    fileName: '差旅费用报销标准.pdf',
+  })
+  assert.equal(doc.status, 'ready')
+  assert.equal(knowledgeDocSchema.safeParse({ ...doc, category: 'other' }).success, false)
+  assert.equal(knowledgeDocSchema.safeParse({ ...doc, fileType: 'zip' }).success, false)
+
+  const query = knowledgeUploadQuerySchema.parse({
+    title: ' 差旅费用报销标准 ',
+    fileName: '标准.pdf',
+  })
+  assert.equal(query.title, '差旅费用报销标准')
+  assert.equal(query.category, 'policy')
+  assert.equal(knowledgeSearchQuerySchema.parse({ q: '住宿费', limit: '5' }).limit, 5)
+  assert.equal(knowledgeSearchQuerySchema.safeParse({ q: '   ' }).success, false)
+
+  const hit = knowledgeSearchHitSchema.parse({
+    documentId: doc.id,
+    title: doc.title,
+    category: doc.category,
+    fileType: doc.fileType,
+    chunkIndex: 0,
+    content: '一线城市每晚上限 600 元',
+    score: 0.82,
+    updatedAt: doc.updatedAt,
+  })
+  assert.equal(hit.chunkIndex, 0)
+})
+
 test('任务更新契约支持分配者修改内容，且至少提交一项', () => {
   assert.equal(taskUpdatePayloadSchema.safeParse({}).success, false)
   assert.equal(taskUpdatePayloadSchema.safeParse({ title: '   ' }).success, false)
@@ -199,6 +244,28 @@ test('AI 对话契约限制历史条数与消息内容', () => {
     model: 'qwen3-local:latest',
   })
   assert.equal(response.model, 'qwen3-local:latest')
+  assert.deepEqual(response.sources, [])
+
+  const withSources = aiChatResponseSchema.parse({
+    message: { role: 'assistant', content: '一线城市上限 600 元。' },
+    model: 'qwen3-local:latest',
+    sources: [
+      {
+        documentId: '01KDOC0000000000000000001',
+        title: '差旅费用报销标准',
+        score: 0.82,
+        excerpt: '一线城市每晚上限 600 元。',
+      },
+    ],
+  })
+  assert.equal(withSources.sources[0].title, '差旅费用报销标准')
+  assert.equal(
+    aiChatResponseSchema.safeParse({
+      ...withSources,
+      sources: [{ ...withSources.sources[0], score: 2 }],
+    }).success,
+    false,
+  )
 })
 
 test('会话与消息契约支持文本与附件', () => {

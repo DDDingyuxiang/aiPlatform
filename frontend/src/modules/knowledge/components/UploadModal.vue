@@ -10,6 +10,7 @@ import { toast } from '@/shared/composables/useToast'
 import { formatFileSize } from '@/shared/utils/format'
 import { useKnowledgeStore } from '../store'
 import {
+  ACCEPTED_EXTENSIONS,
   EXTENSION_TYPE_MAP,
   MAX_UPLOAD_BYTES,
   type DocCategory,
@@ -23,7 +24,12 @@ const { t } = useI18n()
 const knowledge = useKnowledgeStore()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const selected = ref<{ name: string; size: number; type: DocFileType } | null>(null)
+const selected = ref<{
+  file: File
+  name: string
+  size: number
+  type: DocFileType
+} | null>(null)
 const form = reactive({ title: '', category: 'policy' as DocCategory, tags: '' })
 const fileError = ref('')
 const titleError = ref('')
@@ -49,7 +55,6 @@ function pickFile(): void {
   fileInputRef.value?.click()
 }
 
-/** 仅读取文件名与大小用于演示；真实环境由后端签名直传对象存储 */
 function onFileChange(event: Event): void {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -66,7 +71,7 @@ function onFileChange(event: Event): void {
     return
   }
   fileError.value = ''
-  selected.value = { name: file.name, size: file.size, type: fileType }
+  selected.value = { file, name: file.name, size: file.size, type: fileType }
   if (!form.title.trim()) form.title = file.name.replace(/\.[^.]+$/, '')
 }
 
@@ -83,15 +88,13 @@ async function submit(): Promise<void> {
   submitting.value = true
   try {
     await knowledge.upload({
+      file: file.file,
       title: form.title.trim(),
       category: form.category,
       tags: form.tags
         .split(/[,，]/)
         .map((tag) => tag.trim())
         .filter(Boolean),
-      fileName: file.name,
-      fileType: file.type,
-      sizeBytes: file.size,
     })
     toast.success(t('intel.knowledge.uploaded'))
     emit('uploaded')
@@ -122,7 +125,7 @@ async function submit(): Promise<void> {
         ref="fileInputRef"
         class="u-sr-only"
         type="file"
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp"
+        :accept="ACCEPTED_EXTENSIONS"
         @change="onFileChange"
       />
 

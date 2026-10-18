@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/shared/components/Icon.vue'
@@ -29,16 +29,51 @@ onMounted(() => {
   void knowledge.loadAll()
 })
 
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(keyword, (value) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const query = value.trim()
+  if (!query) {
+    knowledge.clearSearch()
+    return
+  }
+  // 输入停顿后再调用向量检索，避免每次按键都请求模型
+  searchTimer = setTimeout(() => void knowledge.search(query), 350)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+  knowledge.clearSearch()
+})
+
+function excerpt(content: string): string {
+  return content.replace(/\s+/g, ' ').slice(0, 180)
+}
+
+function scorePercent(score: number): string {
+  return `${Math.round(Math.max(0, score) * 100)}%`
+}
+
 const CATEGORIES: CategoryFilter[] = ['all', 'policy', 'product', 'tech', 'market', 'training']
+
+/** 语义命中同样遵循当前分类筛选 */
+const visibleSearchHits = computed(() =>
+  knowledge.searchHits.filter(
+    (hit) => activeCategory.value === 'all' || hit.category === activeCategory.value,
+  ),
+)
 
 const filteredDocs = computed(() => {
   const query = keyword.value.trim().toLowerCase()
+  // 语义命中但标题/标签不含关键词的文档也应出现在列表中
+  const semanticIds = new Set(visibleSearchHits.value.map((hit) => hit.documentId))
   return knowledge.docs.filter((doc) => {
     if (activeCategory.value !== 'all' && doc.category !== activeCategory.value) return false
     if (!query) return true
     return (
       doc.title.toLowerCase().includes(query) ||
-      doc.tags.some((tag) => tag.toLowerCase().includes(query))
+      doc.tags.some((tag) => tag.toLowerCase().includes(query)) ||
+      semanticIds.has(doc.id)
     )
   })
 })
@@ -96,6 +131,42 @@ function relative(iso: string): string {
       </div>
     </div>
 
+    <section
+      v-if="keyword.trim() && (knowledge.searching || visibleSearchHits.length || knowledge.searchError)"
+      class="semantic"
+    >
+      <header class="semantic__head">
+        <span class="semantic__title">
+          <Icon name="sparkles" :size="15" />
+          {{ t('intel.knowledge.semantic.title') }}
+        </span>
+        <span v-if="knowledge.searching" class="semantic__hint">
+          {{ t('intel.knowledge.semantic.searching') }}
+        </span>
+      </header>
+      <p v-if="knowledge.searchError" class="semantic__error">
+        {{ knowledge.searchError }}
+      </p>
+      <div v-else-if="!knowledge.searching && visibleSearchHits.length === 0" class="semantic__empty">
+        {{ t('intel.knowledge.semantic.empty') }}
+      </div>
+      <button
+        v-for="hit in visibleSearchHits"
+        :key="`${hit.documentId}-${hit.chunkIndex}`"
+        class="semantic__hit"
+        @click="openDoc(hit.documentId)"
+      >
+        <FileTypeChip :type="hit.fileType" size="sm" />
+        <span class="semantic__hit-body">
+          <span class="semantic__hit-title">
+            {{ hit.title }}
+            <span class="semantic__score">{{ scorePercent(hit.score) }}</span>
+          </span>
+          <span class="semantic__excerpt">{{ excerpt(hit.content) }}</span>
+        </span>
+      </button>
+    </section>
+
     <p class="knowledge__count">
       {{ t('intel.knowledge.resultCount', { count: filteredDocs.length }) }}
     </p>
@@ -105,6 +176,11 @@ function relative(iso: string): string {
         <FileTypeChip :type="doc.fileType" />
         <span class="doc-row__main">
           <span class="doc-row__title u-truncate">{{ doc.title }}</span>
+          <span v-if="doc.status && doc.status !== 'ready'" class="doc-row__status">
+            <BaseTag :tone="doc.status === 'failed' ? 'danger' : 'neutral'" size="sm">
+              {{ t(`intel.knowledge.status.${doc.status}`) }}
+            </BaseTag>
+          </span>
           <span v-if="doc.tags.length" class="doc-row__tags">
             <BaseTag v-for="tag in doc.tags.slice(0, 3)" :key="tag" tone="neutral" size="sm">
               {{ tag }}
@@ -205,6 +281,88 @@ function relative(iso: string): string {
 .knowledge__count {
   font-size: var(--font-sm);
   color: var(--color-text-3);
+}
+
+/* ---- 语义检索 ---- */
+.semantic {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-ai-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.semantic__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.semantic__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-1);
+}
+
+.semantic__hint,
+.semantic__empty,
+.semantic__error {
+  font-size: var(--font-xs);
+  color: var(--color-text-3);
+}
+
+.semantic__error {
+  color: var(--color-danger-text);
+}
+
+.semantic__hit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.semantic__hit:hover {
+  border-color: var(--color-primary);
+}
+
+.semantic__hit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.semantic__hit-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-1);
+}
+
+.semantic__score {
+  font-size: var(--font-xs);
+  color: var(--color-primary-text);
+}
+
+.semantic__excerpt {
+  font-size: var(--font-xs);
+  line-height: 1.6;
+  color: var(--color-text-2);
 }
 
 /* ---- 文档列表 ---- */

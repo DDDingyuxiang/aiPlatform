@@ -8,6 +8,7 @@
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import Icon from '@/shared/components/Icon.vue'
 import BaseAvatar from '@/shared/components/base/BaseAvatar.vue'
 import BaseButton from '@/shared/components/base/BaseButton.vue'
@@ -15,6 +16,7 @@ import BaseTextarea from '@/shared/components/base/BaseTextarea.vue'
 import { useAuthStore } from '@/core/auth/store'
 import { toast } from '@/shared/composables/useToast'
 import { aiApi } from './api'
+import type { AiChatSource } from './types'
 
 type UiRole = 'user' | 'assistant' | 'error'
 
@@ -22,9 +24,11 @@ interface UiMessage {
   id: number
   role: UiRole
   content: string
+  sources?: AiChatSource[]
 }
 
 const { t } = useI18n()
+const router = useRouter()
 const auth = useAuthStore()
 
 const draft = ref('')
@@ -88,6 +92,7 @@ async function onSend(): Promise<void> {
       id: ++sequence,
       role: 'assistant',
       content: result.message.content,
+      sources: result.sources,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : t('ai.failed')
@@ -108,6 +113,10 @@ function onKeydown(event: KeyboardEvent): void {
     event.preventDefault()
     void onSend()
   }
+}
+
+function openSource(source: AiChatSource): void {
+  void router.push({ path: '/knowledge', query: { doc: source.documentId } })
 }
 </script>
 
@@ -168,7 +177,25 @@ function onKeydown(event: KeyboardEvent): void {
           <span v-else-if="message.role === 'error'" class="ai-msg__error-icon">
             <Icon name="alert-circle" :size="18" />
           </span>
-          <div class="ai-msg__bubble">{{ message.content }}</div>
+          <div class="ai-msg__bubble">
+            <span class="ai-msg__text">{{ message.content }}</span>
+            <div v-if="message.sources?.length" class="ai-msg__sources">
+              <span class="ai-msg__sources-label">
+                <Icon name="knowledge" :size="13" />
+                {{ t('ai.sources') }}
+              </span>
+              <button
+                v-for="source in message.sources"
+                :key="source.documentId"
+                type="button"
+                class="ai-msg__source"
+                :title="source.excerpt"
+                @click="openSource(source)"
+              >
+                {{ source.title }}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div v-if="sending" class="ai-msg ai-msg--assistant">
@@ -382,6 +409,38 @@ function onKeydown(event: KeyboardEvent): void {
   gap: 6px;
   color: var(--color-text-3);
   font-size: var(--font-sm);
+}
+
+.ai-msg__sources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border);
+  white-space: normal;
+}
+
+.ai-msg__sources-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-xs);
+  color: var(--color-text-3);
+}
+
+.ai-msg__source {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-ai-soft);
+  color: var(--color-primary-text);
+  font-size: var(--font-xs);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+
+.ai-msg__source:hover {
+  background: var(--color-primary-soft);
 }
 
 .ai-chat__dots {

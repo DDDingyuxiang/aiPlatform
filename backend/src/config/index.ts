@@ -8,6 +8,11 @@ const DEFAULT_CHAT_UPLOAD_DIR = fileURLToPath(
   new URL('../../storage/uploads', import.meta.url),
 )
 
+/** 知识库原始文件默认落在 backend/storage/knowledge */
+const DEFAULT_KNOWLEDGE_UPLOAD_DIR = fileURLToPath(
+  new URL('../../storage/knowledge', import.meta.url),
+)
+
 const serverEnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -34,6 +39,29 @@ const serverEnvSchema = z
       .min(5_000)
       .max(600_000)
       .default(180_000),
+    /** 知识库原始文件本地存储目录 */
+    KNOWLEDGE_UPLOAD_DIR: z.string().trim().min(1).optional(),
+    /** 知识库单文件大小上限（字节），默认 10 MiB */
+    KNOWLEDGE_MAX_UPLOAD_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(100 * 1024 * 1024)
+      .default(10 * 1024 * 1024),
+    /** Qdrant 向量库地址 */
+    QDRANT_URL: z.url().default('http://127.0.0.1:6333'),
+    QDRANT_API_KEY: z.string().trim().optional(),
+    QDRANT_COLLECTION: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .default('document_chunks'),
+    /** 必须与 embedding_profiles.dimension 一致 */
+    QDRANT_VECTOR_SIZE: z.coerce.number().int().min(1).max(8192).default(1024),
+    /** 检索默认返回条数 */
+    KNOWLEDGE_SEARCH_LIMIT: z.coerce.number().int().min(1).max(50).default(6),
+    /** RAG 引用的最低余弦相似度，过低的结果不进入上下文 */
+    KNOWLEDGE_MIN_SCORE: z.coerce.number().min(-1).max(1).default(0.4),
   })
   .superRefine((value, ctx) => {
     // 防止把 .env.example 中的示例值直接用于生产
@@ -77,6 +105,22 @@ export interface AppConfig {
     serviceUrl: string
     timeoutMs: number
   }
+  /** 知识库文件与检索配置 */
+  knowledge: {
+    uploadDir: string
+    maxUploadBytes: number
+    searchLimit: number
+    minScore: number
+    chunkSize: number
+    chunkOverlap: number
+  }
+  /** 向量数据库 */
+  qdrant: {
+    url: string
+    apiKey?: string
+    collection: string
+    vectorSize: number
+  }
 }
 
 /** 加载并校验运行配置；调用前应已通过 loadEnvFile() 加载 .env */
@@ -101,6 +145,20 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ai: {
       serviceUrl: parsed.AI_SERVICE_URL.replace(/\/+$/, ''),
       timeoutMs: parsed.AI_REQUEST_TIMEOUT_MS,
+    },
+    knowledge: {
+      uploadDir: parsed.KNOWLEDGE_UPLOAD_DIR ?? DEFAULT_KNOWLEDGE_UPLOAD_DIR,
+      maxUploadBytes: parsed.KNOWLEDGE_MAX_UPLOAD_BYTES,
+      searchLimit: parsed.KNOWLEDGE_SEARCH_LIMIT,
+      minScore: parsed.KNOWLEDGE_MIN_SCORE,
+      chunkSize: 350,
+      chunkOverlap: 60,
+    },
+    qdrant: {
+      url: parsed.QDRANT_URL.replace(/\/+$/, ''),
+      apiKey: parsed.QDRANT_API_KEY || undefined,
+      collection: parsed.QDRANT_COLLECTION,
+      vectorSize: parsed.QDRANT_VECTOR_SIZE,
     },
   }
 }

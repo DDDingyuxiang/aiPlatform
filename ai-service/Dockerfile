@@ -6,8 +6,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# 国内环境可通过构建参数切换到镜像源，例如阿里云：
+#   PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_INDEX_URL=https://pypi.org/simple
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
+      --timeout 120 --retries 5 -r requirements.txt
 
 COPY app ./app
 

@@ -4,4 +4,5 @@ export type {
   AiChatRequest,
   AiChatResponse,
   AiChatRole,
+  AiChatSource,
 } from '@aiplatform/contracts'

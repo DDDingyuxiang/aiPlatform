@@ -23,5 +23,8 @@ __pycache__/
 # claude code文件
 .claude
 
-# 聊天附件本地存储（运行期生成）
+# 聊天附件/知识库原始文件本地存储（运行期生成）
 backend/storage/
+
+# 本地大模型文件（BGE-M3 等，体积大，不入库）
+models/

@@ -9,6 +9,7 @@ export default {
   hint: 'Enter to send, Shift + Enter for a new line',
   send: 'Send',
   thinking: 'Generating…',
+  sources: 'Sources',
   failed: 'The AI service is temporarily unavailable. Please try again later.',
   clear: 'New chat',
   suggestions: {

@@ -192,12 +192,12 @@ pnpm frontend:dev   # 或进入 frontend 执行 pnpm dev
 
 登录使用种子账号（`admin` 或 `superadmin`，密码为 `.env` 中的
 `SEED_ADMIN_PASSWORD`）。`superadmin` 可跨公司管理员工，`admin` 只能管理演示
-企业。当前只有 identity 接口已实现，任务、审批、知识库、公告等页面会暂时返回
-404，后续模块逐个补齐。
+企业。当前已实现 identity、tasks、conversations、AI 对话、知识库语义检索与
+RAG；审批、公告等页面仍会返回 404，后续模块逐个补齐。
 
 ## 下一步
 
 1. workflows：审批单列表 / 发起 / 决策（契约与表结构已就绪）
-2. 其余业务模块：tasks、knowledge、announcements 等
-3. Redis、限流与令牌吊销策略
+2. 其余业务模块：announcements 等
+3. 知识库文档 ACL、重试任务与增量索引
 4. 数据库迁移流程（当前以 `scripts/database/mysql` 为基线）

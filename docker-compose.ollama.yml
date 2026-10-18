@@ -9,9 +9,7 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_data:/root/.ollama
-    ports:
-      # 默认避开宿主机已占用的 11434
-      - "${OLLAMA_PORT:-11435}:11434"
+    # 不向宿主机发布端口：只在 Compose 网络内为 ai-service 提供模型
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s
