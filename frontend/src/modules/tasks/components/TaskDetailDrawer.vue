@@ -5,19 +5,25 @@ import BaseAvatar from '@/shared/components/base/BaseAvatar.vue'
 import BaseButton from '@/shared/components/base/BaseButton.vue'
 import BaseDrawer from '@/shared/components/base/BaseDrawer.vue'
 import BaseTag from '@/shared/components/base/BaseTag.vue'
+import { useAuthStore } from '@/core/auth/store'
 import { toast } from '@/shared/composables/useToast'
 import { formatDate, formatRelativeTime } from '@/shared/utils/format'
 import { useTasksStore } from '../store'
 import { displayStatus, type TaskItem } from '../types'
 
 const props = defineProps<{ task: TaskItem | null }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: [task: TaskItem] }>()
 
 const { t, locale } = useI18n()
+const auth = useAuthStore()
 const tasks = useTasksStore()
 const busy = ref(false)
 
 const status = computed(() => (props.task ? displayStatus(props.task) : 'todo'))
+/** 只有分配者（创建人）可以修改任务内容 */
+const canEdit = computed(
+  () => !!props.task && props.task.creator.id === auth.user?.id,
+)
 
 const STATUS_TONE = { todo: 'neutral', inProgress: 'primary', done: 'success', overdue: 'danger' } as const
 const PRIORITY_TONE = { high: 'danger', medium: 'warning', low: 'neutral' } as const
@@ -93,6 +99,14 @@ async function update(statusValue: TaskItem['status']): Promise<void> {
     </div>
 
     <template #footer>
+      <BaseButton
+        v-if="task && canEdit"
+        variant="secondary"
+        :disabled="busy"
+        @click="emit('edit', task)"
+      >
+        {{ t('ops.tasks.editAction') }}
+      </BaseButton>
       <BaseButton v-if="task && task.status !== 'done'" variant="secondary" :loading="busy" @click="update('inProgress')">
         {{ t('ops.tasks.detail.markInProgress') }}
       </BaseButton>

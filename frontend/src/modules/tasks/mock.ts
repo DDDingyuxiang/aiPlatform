@@ -69,13 +69,46 @@ defineMock('POST', '/tasks', ({ body, token }) => {
 })
 
 defineMock('PATCH', '/tasks/:id', ({ params, body, token }) => {
-  if (!findMockUserId(token)) return fail(40100, '登录状态已失效', 401)
+  const userId = findMockUserId(token)
+  if (!userId) return fail(40100, '登录状态已失效', 401)
   const task = tasks.find((item) => item.id === params.id)
   if (!task) return fail(40410, '任务不存在', 404)
   const payload = body as UpdateTaskPayload | undefined
-  if (!payload?.status) return fail(40013, '缺少状态参数', 400)
-  task.status = payload.status
-  if (payload.status === 'done') task.progress = 100
-  else if (task.progress === 100) task.progress = 0
+  if (!payload || Object.keys(payload).length === 0) {
+    return fail(40013, '缺少要修改的字段', 400)
+  }
+
+  const editsDetails =
+    payload.title !== undefined ||
+    payload.description !== undefined ||
+    payload.priority !== undefined ||
+    payload.dueAt !== undefined ||
+    payload.assigneeId !== undefined
+  if (editsDetails && task.creator.id !== userId) {
+    return fail(40300, '只有任务分配者可以修改任务', 403)
+  }
+
+  if (payload.title !== undefined) {
+    const title = payload.title.trim()
+    if (!title) return fail(40010, '任务标题不能为空', 400)
+    task.title = title
+  }
+  if (payload.description !== undefined) task.description = payload.description.trim()
+  if (payload.priority !== undefined) task.priority = payload.priority
+  if (payload.dueAt !== undefined) {
+    task.dueAt = new Date(`${payload.dueAt}T18:00:00`).toISOString()
+  }
+  if (payload.assigneeId !== undefined) {
+    if (!MEMBERS.some((member) => member.id === payload.assigneeId)) {
+      return fail(40011, '负责人不存在', 400)
+    }
+    task.assignee = personOf(payload.assigneeId)
+  }
+
+  if (payload.status !== undefined) {
+    task.status = payload.status
+    if (payload.status === 'done') task.progress = 100
+    else if (task.progress === 100) task.progress = 0
+  }
   return { ...task }
 })

@@ -6,7 +6,13 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { useAuthStore } from '@/core/auth/store'
 import { tasksApi } from './api'
-import { displayStatus, type CreateTaskPayload, type Milestone, type TaskItem } from './types'
+import {
+  displayStatus,
+  type CreateTaskPayload,
+  type Milestone,
+  type TaskItem,
+  type UpdateTaskPayload,
+} from './types'
 
 export const useTasksStore = defineStore('tasks', () => {
   const tasks = ref<TaskItem[]>([])
@@ -56,10 +62,15 @@ export const useTasksStore = defineStore('tasks', () => {
     return task
   }
 
-  async function setStatus(id: string, status: TaskItem['status']): Promise<void> {
-    const updated = await tasksApi.update(id, { status })
+  async function update(id: string, payload: UpdateTaskPayload): Promise<TaskItem> {
+    const updated = await tasksApi.update(id, payload)
     const index = tasks.value.findIndex((task) => task.id === id)
     if (index !== -1) tasks.value[index] = updated
+    return updated
+  }
+
+  async function setStatus(id: string, status: TaskItem['status']): Promise<void> {
+    await update(id, { status })
   }
 
   function taskById(id: string): TaskItem | undefined {
@@ -78,6 +89,7 @@ export const useTasksStore = defineStore('tasks', () => {
     loadAll,
     refresh,
     create,
+    update,
     setStatus,
     taskById,
     displayStatus,

@@ -169,16 +169,50 @@ export function createMySqlTasksRepository(pool: Pool): TasksRepository {
       }
     },
 
-    async updateStatus(tenantId, taskId, status) {
+    async update(tenantId, taskId, record) {
+      const assignments: string[] = []
+      const params: Array<string | Date | null> = []
+
+      if (record.title !== undefined) {
+        assignments.push('title = ?')
+        params.push(record.title)
+      }
+      if (record.description !== undefined) {
+        assignments.push('description = ?')
+        params.push(record.description || null)
+      }
+      if (record.priority !== undefined) {
+        assignments.push('priority = ?')
+        params.push(record.priority)
+      }
+      if (record.dueAt !== undefined) {
+        assignments.push('due_at = ?')
+        params.push(record.dueAt)
+      }
+      if (record.assigneeEmployeeId !== undefined) {
+        assignments.push('assignee_employee_id = ?')
+        params.push(record.assigneeEmployeeId)
+      }
+
+      // 状态流转保留原进度语义：完成置 100，其余回到 0
+      if (record.status) {
+        assignments.push(
+          'status = ?',
+          "progress = CASE WHEN ? = 'done' THEN 100 ELSE 0 END",
+        )
+        params.push(record.status, record.status)
+      }
+
+      if (assignments.length === 0) return
+      assignments.push('updated_at = UTC_TIMESTAMP(3)')
+      params.push(tenantId, taskId)
       await pool.execute(
         `UPDATE tasks
-            SET status = ?,
-                progress = CASE WHEN ? = 'done' THEN 100 ELSE 0 END,
-                updated_at = UTC_TIMESTAMP(3)
+            SET ${assignments.join(', ')}
           WHERE tenant_id = ?
             AND id = ?
             AND deleted_at IS NULL`,
-        [status, status, tenantId, taskId],
+        params,
       )
     },
 

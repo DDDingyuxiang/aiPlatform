@@ -48,6 +48,16 @@ export interface TaskCreateRecord {
   sourceMessageId?: string
 }
 
+/** 任务更新：只写入提交的字段，避免并发时覆盖未修改的内容 */
+export interface TaskUpdateRecord {
+  title?: string
+  description?: string
+  priority?: TaskPriority
+  dueAt?: Date
+  assigneeEmployeeId?: string
+  status?: 'todo' | 'in_progress' | 'done'
+}
+
 /** 来源消息已创建过任务：用于 AI 抽取幂等 */
 export class DuplicateTaskSourceError extends Error {
   constructor() {
@@ -69,11 +79,7 @@ export interface TasksRepository {
     sourceMessageId: string,
   ): Promise<TaskRecord | null>
   create(tenantId: string, record: TaskCreateRecord): Promise<void>
-  updateStatus(
-    tenantId: string,
-    taskId: string,
-    status: 'todo' | 'in_progress' | 'done',
-  ): Promise<void>
+  update(tenantId: string, taskId: string, record: TaskUpdateRecord): Promise<void>
   findEmployeesByPublicIds(
     tenantId: string,
     publicIds: string[],
@@ -128,7 +134,7 @@ export interface TasksService extends ChatTaskExtractor {
   list(auth: AuthContext): Promise<TaskItem[]>
   milestones(auth: AuthContext): Promise<Milestone[]>
   create(auth: AuthContext, payload: CreateTaskPayload): Promise<TaskItem>
-  updateStatus(
+  update(
     auth: AuthContext,
     publicId: string,
     payload: UpdateTaskPayload,

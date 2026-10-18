@@ -69,6 +69,27 @@ describe('tasks store', () => {
     expect(tasks.myPendingTasks).toHaveLength(4)
   })
 
+  it('分配者可以修改任务内容，未改动的截止时间保持不变', async () => {
+    await loginAsAdmin()
+    const tasks = await loadTasks()
+
+    const target = tasks.taskById('t-07')
+    expect(target).toBeDefined()
+    const originalDueAt = target!.dueAt
+
+    const pending = tasks.update(target!.id, {
+      title: '调整知识库迁移方案',
+      priority: 'low',
+    })
+    await flush()
+    const updated = await pending
+
+    expect(updated.title).toBe('调整知识库迁移方案')
+    expect(updated.priority).toBe('low')
+    expect(updated.dueAt).toBe(originalDueAt)
+    expect(tasks.taskById('t-07')?.title).toBe('调整知识库迁移方案')
+  })
+
   it('创建任务后出现在「我分配的」列表', async () => {
     await loginAsAdmin()
     const tasks = await loadTasks()

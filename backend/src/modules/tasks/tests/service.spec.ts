@@ -75,9 +75,10 @@ function setup(overrides?: {
     create: vi.fn(async (_tenantId: string, _record: TaskCreateRecord) => {
       created = true
     }),
-    updateStatus: vi.fn(async () => {}),
+    update: vi.fn(async () => {}),
     findEmployeesByPublicIds: vi.fn(async () => [
       { employeeId: '3', publicId: 'p-2', name: '王真', status: 'active' },
+      { employeeId: '9', publicId: 'p-9', name: '李思', status: 'active' },
     ]),
   }
 
@@ -137,9 +138,50 @@ describe('tasks service', () => {
       assignee: { id: 'p-2', name: '王真' },
     })
 
-    await service.updateStatus(auth, taskRecord.publicId, { status: 'inProgress' })
-    expect(repository.updateStatus).toHaveBeenCalledWith('1', '10', 'in_progress')
+    // 负责人可以单独流转状态，但不会改动任务详情
+    const assigneeAuth = { tenantId: '1', employeeId: '3', publicId: 'p-2' }
+    await service.update(assigneeAuth, taskRecord.publicId, { status: 'inProgress' })
+    expect(repository.update).toHaveBeenCalledWith('1', '10', {
+      status: 'in_progress',
+    })
     await expect(service.milestones(auth)).resolves.toEqual([])
+  })
+
+  it('分配者可以修改任务内容，并按业务时区换算新的截止日期', async () => {
+    const { service, repository } = setup()
+
+    await service.update(auth, taskRecord.publicId, {
+      title: '调整后的方案',
+      description: '改为明天提交',
+      priority: 'low',
+      dueAt: '2026-10-20',
+      assigneeId: 'p-9',
+    })
+
+    expect(repository.update).toHaveBeenCalledWith(
+      '1',
+      '10',
+      {
+        title: '调整后的方案',
+        description: '改为明天提交',
+        priority: 'low',
+        dueAt: new Date('2026-10-20T10:00:00.000Z'),
+        assigneeEmployeeId: '9',
+      },
+    )
+  })
+
+  it('非分配者不能修改任务内容，负责人不存在时拒绝', async () => {
+    const { service } = setup()
+    const assigneeAuth = { tenantId: '1', employeeId: '3', publicId: 'p-2' }
+
+    await expect(
+      service.update(assigneeAuth, taskRecord.publicId, { title: '越权修改' }),
+    ).rejects.toMatchObject({ status: 403 })
+
+    await expect(
+      service.update(auth, taskRecord.publicId, { assigneeId: 'p-404' }),
+    ).rejects.toMatchObject({ status: 400 })
   })
 
   it('AI 抽取结果创建任务，使用参与者作为负责人并记录来源消息', async () => {

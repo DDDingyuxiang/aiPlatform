@@ -46,9 +46,22 @@ export const taskCreatePayloadSchema = z.strictObject({
 })
 export type CreateTaskPayload = z.infer<typeof taskCreatePayloadSchema>
 
-export const taskUpdatePayloadSchema = z.strictObject({
-  status: taskStatusSchema,
-})
+/**
+ * 任务更新：状态由负责人流转；标题、描述、优先级、截止日期和负责人只能由分配者修改。
+ * 所有字段可选，但至少提交一项，避免空请求。
+ */
+export const taskUpdatePayloadSchema = z
+  .strictObject({
+    status: taskStatusSchema.optional(),
+    title: z.string().trim().min(1).max(255).optional(),
+    description: z.string().trim().max(5_000).optional(),
+    priority: taskPrioritySchema.optional(),
+    dueAt: isoDateSchema.optional(),
+    assigneeId: apiIdSchema.optional(),
+  })
+  .refine((payload) => Object.values(payload).some((value) => value !== undefined), {
+    message: '至少提供一个要修改的字段',
+  })
 export type UpdateTaskPayload = z.infer<typeof taskUpdatePayloadSchema>
 
 export const milestoneStatusSchema = z.enum(['upcoming', 'inProgress', 'done', 'overdue'])

@@ -19,6 +19,7 @@ import {
   type TaskCreateRecord,
   type TaskRecord,
   type TasksRepository,
+  type TaskUpdateRecord,
   type TasksService,
 } from './types.js'
 
@@ -213,13 +214,46 @@ export function createTasksService(options: TasksServiceOptions): TasksService {
       return toTaskItem(await loadTask(auth.tenantId, publicId, auth.employeeId))
     },
 
-    async updateStatus(auth, publicId, payload: UpdateTaskPayload) {
+    async update(auth, publicId, payload: UpdateTaskPayload) {
       const task = await loadTask(auth.tenantId, publicId, auth.employeeId)
-      await repository.updateStatus(
-        auth.tenantId,
-        task.taskId,
-        toDatabaseStatus(payload.status),
-      )
+
+      // 任务内容（标题/描述/截止时间/负责人等）只有分配者可以调整；
+      // 负责人仍可单独流转自己任务的状态。
+      const editsDetails =
+        payload.title !== undefined ||
+        payload.description !== undefined ||
+        payload.priority !== undefined ||
+        payload.dueAt !== undefined ||
+        payload.assigneeId !== undefined
+      if (editsDetails && task.creator.employeeId !== auth.employeeId) {
+        throw new AppError(ErrorCode.FORBIDDEN, '只有任务分配者可以修改任务', 403)
+      }
+
+      const record: TaskUpdateRecord = {}
+      if (payload.title !== undefined) record.title = payload.title
+      if (payload.description !== undefined) record.description = payload.description
+      if (payload.priority !== undefined) record.priority = payload.priority
+      if (payload.dueAt !== undefined) {
+        record.dueAt = zonedDateTimeToUtc(payload.dueAt, 18, timezone)
+      }
+      if (payload.status !== undefined) {
+        record.status = toDatabaseStatus(payload.status)
+      }
+
+      if (payload.assigneeId && payload.assigneeId !== task.assignee.publicId) {
+        const employees = await repository.findEmployeesByPublicIds(auth.tenantId, [
+          payload.assigneeId,
+        ])
+        const assignee = employees.find(
+          (employee) => employee.publicId === payload.assigneeId,
+        )
+        if (!assignee || assignee.status !== 'active') {
+          throw invalid('负责人不存在或已停用')
+        }
+        record.assigneeEmployeeId = assignee.employeeId
+      }
+
+      await repository.update(auth.tenantId, task.taskId, record)
       return toTaskItem(await loadTask(auth.tenantId, publicId, auth.employeeId))
     },
 

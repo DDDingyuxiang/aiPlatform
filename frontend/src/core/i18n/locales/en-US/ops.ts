@@ -3,6 +3,10 @@ export default {
   tasks: {
     subtitle: 'Track tasks you own and tasks you assigned to colleagues',
     new: 'New task',
+    editAction: 'Edit',
+    editTitle: 'Edit task',
+    editSaved: 'Task updated',
+    noChanges: 'No changes to save',
     searchPlaceholder: 'Search title or description',
     tabs: {
       mine: 'Assigned to me',

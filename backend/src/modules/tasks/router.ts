@@ -34,7 +34,7 @@ export function createTasksRouter(options: TasksRouterOptions): Router {
 
   router.patch('/:id', async (req, res) => {
     const payload = taskUpdatePayloadSchema.parse(req.body)
-    const result = await service.updateStatus(
+    const result = await service.update(
       requireAuthContext(req),
       req.params.id,
       payload,

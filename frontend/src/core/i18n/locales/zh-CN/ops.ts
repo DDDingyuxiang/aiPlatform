@@ -3,6 +3,10 @@ export default {
   tasks: {
     subtitle: '跟进我负责的事项，查看我分配给同事的任务',
     new: '新建任务',
+    editAction: '编辑',
+    editTitle: '编辑任务',
+    editSaved: '任务已更新',
+    noChanges: '没有需要保存的修改',
     searchPlaceholder: '搜索任务标题或描述',
     tabs: {
       mine: '我负责的',

@@ -23,6 +23,7 @@ type TabKey = 'mine' | 'assigned' | 'milestones'
 const activeTab = ref<TabKey>('mine')
 const keyword = ref('')
 const createOpen = ref(false)
+const editingTask = ref<TaskItem | null>(null)
 
 onMounted(() => {
   void tasks.loadAll()
@@ -40,6 +41,10 @@ function openTask(id: string): void {
 
 function closeTask(): void {
   void router.replace({ path: '/tasks' })
+}
+
+function editTask(task: TaskItem): void {
+  editingTask.value = task
 }
 
 const filteredMine = computed(() => filterTasks(tasks.mineTasks))
@@ -206,8 +211,14 @@ function milestonePercent(done: number, total: number): number {
       </p>
     </div>
 
-    <TaskDetailDrawer :task="activeTask" @close="closeTask" />
+    <TaskDetailDrawer :task="activeTask" @close="closeTask" @edit="editTask" />
     <TaskFormModal :open="createOpen" @close="createOpen = false" />
+    <TaskFormModal
+      :open="!!editingTask"
+      :task="editingTask"
+      @close="editingTask = null"
+      @saved="editingTask = null"
+    />
   </div>
 </template>
 

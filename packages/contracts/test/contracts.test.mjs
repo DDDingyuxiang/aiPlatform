@@ -20,6 +20,7 @@ import {
   extractedTaskSchema,
   taskCreatePayloadSchema,
   taskItemSchema,
+  taskUpdatePayloadSchema,
   loginPayloadSchema,
   monthSchema,
   profileUpdateSchema,
@@ -163,6 +164,22 @@ test('任务契约支持任务对象、手工创建与 AI 抽取结果', () => {
   })
   assert.equal(extracted.create, true)
   assert.equal(extractedTaskSchema.safeParse({ create: false }).success, true)
+})
+
+test('任务更新契约支持分配者修改内容，且至少提交一项', () => {
+  assert.equal(taskUpdatePayloadSchema.safeParse({}).success, false)
+  assert.equal(taskUpdatePayloadSchema.safeParse({ title: '   ' }).success, false)
+
+  const parsed = taskUpdatePayloadSchema.parse({
+    title: ' 调整后的方案 ',
+    description: '',
+    dueAt: '2026-10-20',
+    priority: 'low',
+  })
+  assert.equal(parsed.title, '调整后的方案')
+  assert.equal(parsed.description, '')
+  assert.equal(taskUpdatePayloadSchema.safeParse({ status: 'done' }).success, true)
+  assert.equal(taskUpdatePayloadSchema.safeParse({ unknown: 1 }).success, false)
 })
 
 test('AI 对话契约限制历史条数与消息内容', () => {
