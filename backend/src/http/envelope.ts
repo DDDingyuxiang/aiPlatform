@@ -24,12 +24,14 @@ export function sendFailure(
   message: string,
   requestId: string,
   status: number,
+  details?: unknown,
 ): void {
   const body: ApiEnvelope<null> = {
     code,
     data: null,
     message,
     requestId,
+    ...(details === undefined ? {} : { details }),
   }
   res.status(status).json(body)
 }

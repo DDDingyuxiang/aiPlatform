@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { knowledgeUploadConflictDetailsSchema } from '@aiplatform/contracts'
+import { ApiError } from '@/core/http'
 import Icon from '@/shared/components/Icon.vue'
 import BaseButton from '@/shared/components/base/BaseButton.vue'
 import BaseInput from '@/shared/components/base/BaseInput.vue'
@@ -8,6 +10,7 @@ import BaseModal from '@/shared/components/base/BaseModal.vue'
 import BaseSelect from '@/shared/components/base/BaseSelect.vue'
 import { toast } from '@/shared/composables/useToast'
 import { formatFileSize } from '@/shared/utils/format'
+import KnowledgeConflictDialog from './KnowledgeConflictDialog.vue'
 import { useKnowledgeStore } from '../store'
 import {
   ACCEPTED_EXTENSIONS,
@@ -15,10 +18,15 @@ import {
   MAX_UPLOAD_BYTES,
   type DocCategory,
   type DocFileType,
+  type KnowledgeUploadConflictDetails,
 } from '../types'
 
 const props = defineProps<{ open: boolean }>()
-const emit = defineEmits<{ close: []; uploaded: [] }>()
+const emit = defineEmits<{
+  close: []
+  uploaded: []
+  openDoc: [documentId: string]
+}>()
 
 const { t } = useI18n()
 const knowledge = useKnowledgeStore()
@@ -34,6 +42,9 @@ const form = reactive({ title: '', category: 'policy' as DocCategory, tags: '' }
 const fileError = ref('')
 const titleError = ref('')
 const submitting = ref(false)
+const conflict = ref<KnowledgeUploadConflictDetails | null>(null)
+const conflictOpen = ref(false)
+const dragging = ref(false)
 
 const CATEGORIES: DocCategory[] = ['policy', 'product', 'tech', 'market', 'training']
 const categoryOptions = computed(() =>
@@ -47,6 +58,8 @@ watch(
     selected.value = null
     fileError.value = ''
     titleError.value = ''
+    conflict.value = null
+    conflictOpen.value = false
     Object.assign(form, { title: '', category: 'policy' as DocCategory, tags: '' })
   },
 )
@@ -55,11 +68,7 @@ function pickFile(): void {
   fileInputRef.value?.click()
 }
 
-function onFileChange(event: Event): void {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
+function selectFile(file: File): void {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
   const fileType = EXTENSION_TYPE_MAP[extension]
   if (!fileType) {
@@ -71,15 +80,32 @@ function onFileChange(event: Event): void {
     return
   }
   fileError.value = ''
+  conflict.value = null
+  conflictOpen.value = false
   selected.value = { file, name: file.name, size: file.size, type: fileType }
   if (!form.title.trim()) form.title = file.name.replace(/\.[^.]+$/, '')
 }
 
-function removeFile(): void {
-  selected.value = null
+function onFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) selectFile(file)
 }
 
-async function submit(): Promise<void> {
+function onDrop(event: DragEvent): void {
+  dragging.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) selectFile(file)
+}
+
+function removeFile(): void {
+  selected.value = null
+  conflict.value = null
+  conflictOpen.value = false
+}
+
+async function submit(forceCreate = false): Promise<void> {
   titleError.value = form.title.trim() ? '' : t('common.validation.required')
   if (!selected.value) fileError.value = t('common.validation.required')
   if (titleError.value || fileError.value || submitting.value) return
@@ -95,15 +121,60 @@ async function submit(): Promise<void> {
         .split(/[,，]/)
         .map((tag) => tag.trim())
         .filter(Boolean),
+      forceCreate,
     })
     toast.success(t('intel.knowledge.uploaded'))
     emit('uploaded')
-    emit('close')
+    requestClose()
+  } catch (error) {
+    if (error instanceof ApiError && (error.code === 40911 || error.code === 40912)) {
+      const parsed = knowledgeUploadConflictDetailsSchema.safeParse(error.details)
+      if (parsed.success) {
+        conflict.value = parsed.data
+        conflictOpen.value = true
+        return
+      }
+    }
+    toast.error(error instanceof Error ? error.message : t('common.empty'))
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function uploadAsVersion(documentId: string): Promise<void> {
+  const file = selected.value
+  if (!file || submitting.value) return
+  conflictOpen.value = false
+  submitting.value = true
+  try {
+    await knowledge.uploadVersion(documentId, file.file)
+    toast.success(t('intel.knowledge.uploadedVersion'))
+    emit('uploaded')
+    requestClose()
   } catch (error) {
     toast.error(error instanceof Error ? error.message : t('common.empty'))
   } finally {
     submitting.value = false
   }
+}
+
+function createAnyway(): void {
+  conflictOpen.value = false
+  void submit(true)
+}
+
+function openExisting(documentId: string): void {
+  conflictOpen.value = false
+  emit('openDoc', documentId)
+  requestClose()
+}
+
+function closeConflict(): void {
+  conflictOpen.value = false
+}
+
+function requestClose(): void {
+  emit('close')
 }
 </script>
 
@@ -113,10 +184,19 @@ async function submit(): Promise<void> {
     :title="t('intel.knowledge.uploadForm.title')"
     size="md"
     :close-on-overlay="false"
-    @close="emit('close')"
+    @close="requestClose"
   >
     <div class="upload">
-      <button type="button" class="upload__drop" @click="pickFile">
+      <button
+        type="button"
+        class="upload__drop"
+        :class="{ 'upload__drop--active': dragging }"
+        @click="pickFile"
+        @dragenter.prevent="dragging = true"
+        @dragover.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @drop.prevent="onDrop"
+      >
         <Icon name="upload" :size="22" class="upload__drop-icon" />
         <span class="upload__drop-text">{{ t('intel.knowledge.uploadForm.drop') }}</span>
         <span class="upload__drop-hint">{{ t('intel.knowledge.uploadForm.hint') }}</span>
@@ -161,12 +241,21 @@ async function submit(): Promise<void> {
     </div>
 
     <template #footer>
-      <BaseButton @click="emit('close')">{{ t('common.cancel') }}</BaseButton>
-      <BaseButton variant="primary" :loading="submitting" @click="submit">
+      <BaseButton @click="requestClose">{{ t('common.cancel') }}</BaseButton>
+      <BaseButton variant="primary" :loading="submitting" @click="submit()">
         {{ t('intel.knowledge.uploadForm.submit') }}
       </BaseButton>
     </template>
   </BaseModal>
+
+  <KnowledgeConflictDialog
+    :open="conflictOpen"
+    :conflict="conflict"
+    @close="closeConflict"
+    @as-version="uploadAsVersion"
+    @as-new="createAnyway"
+    @open-doc="openExisting"
+  />
 </template>
 
 <style scoped>
@@ -191,7 +280,8 @@ async function submit(): Promise<void> {
     background-color var(--duration-fast) var(--ease-standard);
 }
 
-.upload__drop:hover {
+.upload__drop:hover,
+.upload__drop--active {
   border-color: var(--color-primary);
   background: var(--color-primary-soft);
 }

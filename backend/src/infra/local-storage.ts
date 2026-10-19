@@ -1,9 +1,10 @@
 import { createReadStream, type ReadStream } from 'node:fs'
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 
 export interface LocalFileStorage {
   save(key: string, data: Buffer): Promise<void>
+  read(key: string): Promise<Buffer>
   open(key: string): Promise<ReadStream>
   remove(key: string): Promise<void>
 }
@@ -36,6 +37,10 @@ export function createLocalFileStorage(rootDir: string): LocalFileStorage {
       const fullPath = resolveKey(key)
       await stat(fullPath)
       return createReadStream(fullPath)
+    },
+
+    async read(key) {
+      return readFile(resolveKey(key))
     },
 
     async remove(key) {

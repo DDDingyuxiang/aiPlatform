@@ -88,6 +88,10 @@ function openDoc(id: string): void {
   void router.push({ path: '/knowledge', query: { doc: id } })
 }
 
+function closeUpload(): void {
+  uploadOpen.value = false
+}
+
 function closeDoc(): void {
   void router.replace({ path: '/knowledge' })
 }
@@ -176,6 +180,9 @@ function relative(iso: string): string {
         <FileTypeChip :type="doc.fileType" />
         <span class="doc-row__main">
           <span class="doc-row__title u-truncate">{{ doc.title }}</span>
+          <span v-if="doc.currentVersionNo" class="doc-row__version">
+            v{{ doc.currentVersionNo }}
+          </span>
           <span v-if="doc.status && doc.status !== 'ready'" class="doc-row__status">
             <BaseTag :tone="doc.status === 'failed' ? 'danger' : 'neutral'" size="sm">
               {{ t(`intel.knowledge.status.${doc.status}`) }}
@@ -205,7 +212,11 @@ function relative(iso: string): string {
     </div>
 
     <DocDetailDrawer :doc="activeDoc" @close="closeDoc" />
-    <UploadModal :open="uploadOpen" @close="uploadOpen = false" />
+    <UploadModal
+      :open="uploadOpen"
+      @close="closeUpload"
+      @open-doc="openDoc"
+    />
   </div>
 </template>
 
@@ -406,6 +417,12 @@ function relative(iso: string): string {
   font-size: var(--font-md);
   font-weight: var(--weight-medium);
   color: var(--color-text-1);
+}
+
+.doc-row__version {
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3);
 }
 
 .doc-row__tags {
