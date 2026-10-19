@@ -17,6 +17,7 @@ import {
   createRedisSessionStore,
   createRequireAnyPermission,
   createTokenService,
+  type AuthContext,
 } from './modules/identity/index.js'
 import {
   createConversationsRouter,
@@ -25,7 +26,13 @@ import {
   createMySqlConversationsRepository,
   createRedisUnreadStore,
 } from './modules/conversations/index.js'
-import { createAiRouter, createAiService } from './modules/ai/index.js'
+import {
+  createAiConversationService,
+  createAiRouter,
+  createAiService,
+  createMySqlAiChatRepository,
+  createSummaryService,
+} from './modules/ai/index.js'
 import {
   createAiTaskAnalyzer,
   createMySqlTasksRepository,
@@ -40,6 +47,7 @@ import {
 import { createEmbeddingService } from './modules/ai/index.js'
 import { createLocalFileStorage } from './infra/local-storage.js'
 import { createQdrantVectorStore } from './infra/qdrant.js'
+import { createKnowledgeQueue } from './infra/knowledge-queue.js'
 import { createLogger } from './shared/logger.js'
 
 async function main(): Promise<void> {
@@ -127,12 +135,11 @@ async function main(): Promise<void> {
     embeddings,
     vectors: vectorStore,
     storage: createLocalFileStorage(config.knowledge.uploadDir),
-    collectionName: config.qdrant.collection,
+    queue: createKnowledgeQueue(redis, logger),
     vectorSize: config.qdrant.vectorSize,
     maxUploadBytes: config.knowledge.maxUploadBytes,
     searchLimit: config.knowledge.searchLimit,
-    chunkSize: config.knowledge.chunkSize,
-    chunkOverlap: config.knowledge.chunkOverlap,
+    searchOverfetch: config.knowledge.searchOverfetch,
     logger,
   })
   const knowledgeRouter = createKnowledgeRouter({
@@ -140,24 +147,62 @@ async function main(): Promise<void> {
     requireAuth,
     maxUploadBytes: config.knowledge.maxUploadBytes,
   })
+  const knowledgeRetriever = {
+    async retrieve(auth: AuthContext, query: string, limit: number) {
+      const result = await knowledgeService.search(auth, { q: query, limit })
+      return result.hits.map((hit) => ({
+        documentId: hit.documentId,
+        title: hit.title,
+        content: hit.content,
+        score: hit.score,
+      }))
+    },
+  }
   const aiService = createAiService({
     serviceUrl: config.ai.serviceUrl,
     timeoutMs: config.ai.timeoutMs,
     logger,
+    knowledgeLimit: config.knowledge.searchLimit,
     knowledgeMinScore: config.knowledge.minScore,
-    retriever: {
-      async retrieve(auth, query, limit) {
-        const result = await knowledgeService.search(auth, { q: query, limit })
-        return result.hits.map((hit) => ({
-          documentId: hit.documentId,
-          title: hit.title,
-          content: hit.content,
-          score: hit.score,
-        }))
-      },
-    },
+    ragContextChars: config.ai.context.ragContextChars,
+    streamIdleTimeoutMs: config.ai.stream.idleTimeoutMs,
+    streamTimeoutMs: config.ai.stream.timeoutMs,
+    retriever: knowledgeRetriever,
   })
-  const aiRouter = createAiRouter({ service: aiService, requireAuth })
+  const aiSummaryService = createSummaryService({
+    serviceUrl: config.ai.serviceUrl,
+    repository: createMySqlAiChatRepository(pool),
+    logger,
+    enabled: config.ai.summary.enabled,
+    timeoutMs: config.ai.summary.timeoutMs,
+    triggerTokens: config.ai.summary.triggerTokens,
+    keepRecentMessages: config.ai.summary.keepRecentMessages,
+    maxChars: config.ai.summary.maxChars,
+  })
+  const aiConversationService = createAiConversationService({
+    repository: createMySqlAiChatRepository(pool),
+    model: aiService,
+    summary: aiSummaryService,
+    retriever: knowledgeRetriever,
+    logger,
+    knowledgeLimit: config.knowledge.searchLimit,
+    knowledgeMinScore: config.knowledge.minScore,
+    ragTimeoutMs: config.ai.context.ragTimeoutMs,
+    context: {
+      maxTokens: config.ai.context.maxTokens,
+      overheadTokens: config.ai.context.overheadTokens,
+      historyMessages: config.ai.context.historyMessages,
+      ragContextChars: config.ai.context.ragContextChars,
+      summaryMaxChars: config.ai.summary.maxChars,
+    },
+    pageSize: config.ai.conversationPageSize,
+    streamStaleMs: config.ai.streamStaleMs,
+  })
+  const aiRouter = createAiRouter({
+    service: aiService,
+    conversationService: aiConversationService,
+    requireAuth,
+  })
 
   // 向量库不可用时不影响聊天/任务；首次检索会自动重试创建
   void vectorStore.ensureCollection().catch((error: unknown) => {
