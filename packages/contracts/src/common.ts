@@ -18,6 +18,8 @@ export interface ApiEnvelope<T> {
   data: T
   message: string
   requestId: string
+  /** 可选的结构化错误详情（例如知识库同名冲突候选） */
+  details?: unknown
 }
 
 /** 对外资源 ID（字符串形式） */
