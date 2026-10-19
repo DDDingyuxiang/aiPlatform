@@ -253,26 +253,26 @@ export function createConversationsService(
     if (!taskExtractor || !hasFutureTimeExpression(messageRecord.content)) return
 
     try {
-      const history = await repository.listMessages(
-        auth.tenantId,
-        conversation.conversationId,
-      )
       const nameByPublicId = new Map(
         conversation.participants.map((participant) => [
           participant.publicId,
           participant.name,
         ]),
       )
-      // 系统消息是 AI 生成的任务通知，不作为新一轮任务抽取的上下文
-      const recentMessages = history
-        .filter((message) => message.type !== 'system')
-        .slice(-10)
-        .map((message) => ({
-          senderId: message.senderPublicId,
-          senderName: nameByPublicId.get(message.senderPublicId) ?? '',
-          content: message.content,
-          sentAt: message.sentAt,
-        }))
+      // 只查最近 10 条非系统消息；长会话不再全量读取
+      const recentMessages = (
+        await repository.listRecentMessages(
+          auth.tenantId,
+          conversation.conversationId,
+          10,
+          { excludeSystem: true },
+        )
+      ).map((message) => ({
+        senderId: message.senderPublicId,
+        senderName: nameByPublicId.get(message.senderPublicId) ?? '',
+        content: message.content,
+        sentAt: message.sentAt,
+      }))
 
       const result = await taskExtractor.analyzeChatMessage({
         auth,
