@@ -1,8 +1,9 @@
 # aiPlatform 后端
 
-Express 5 + TypeScript 的业务后端，采用模块化单体结构。当前完成
-**identity 模块**（登录 / 登出 / 当前用户资料 / 通讯录 / 当月考勤 /
-角色与权限、管理端只读总览），所有业务模块后续统一复用该认证与授权中间件。
+Express 5 + TypeScript 的业务后端，采用模块化单体结构。当前已接入
+identity、conversations、tasks、ai、knowledge 模块；认证与授权中间件由各
+业务模块统一复用。系统级功能、启动与部署说明见仓库根目录
+[`README.md`](../README.md)。
 
 ## 目录结构
 
@@ -80,7 +81,7 @@ cp backend/.env.example backend/.env
 ```bash
 # 1. 初始化数据库（在仓库根目录执行）
 mysql -h 127.0.0.1 -u <user> -p < scripts/database/mysql/00_create_database.sql
-for file in scripts/database/mysql/0{1,2,3,4,5}_*.sql; do
+for file in $(ls scripts/database/mysql/[0-9][0-9]_*.sql | tail -n +2); do
   mysql -h 127.0.0.1 -u <user> -p ai_platform < "$file"
 done
 
@@ -198,6 +199,6 @@ RAG；审批、公告等页面仍会返回 404，后续模块逐个补齐。
 ## 下一步
 
 1. workflows：审批单列表 / 发起 / 决策（契约与表结构已就绪）
-2. 其余业务模块：announcements 等
-3. 知识库文档 ACL、重试任务与增量索引
-4. 数据库迁移流程（当前以 `scripts/database/mysql` 为基线）
+2. analytics、announcements 等模块的后端接口
+3. 知识库文档 ACL 与增量索引
+4. 正式数据库迁移工具（当前以 `scripts/database/mysql` 为基线）

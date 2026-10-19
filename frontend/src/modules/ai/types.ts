@@ -5,4 +5,12 @@ export type {
   AiChatResponse,
   AiChatRole,
   AiChatSource,
+  AiConversation,
+  AiConversationHistory,
+  AiConversationSummary,
+  AiHistoryMessage,
+  AiKnowledgeStatus,
+  AiMessageSendPayload,
+  AiMessageSendResult,
+  AiStreamEvent,
 } from '@aiplatform/contracts'

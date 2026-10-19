@@ -116,6 +116,7 @@ async function request<T>(
         code: envelope.code,
         status: response.status,
         requestId: envelope.requestId || requestId,
+        details: envelope.details,
       })
     }
     return envelope.data
@@ -151,6 +152,7 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
         code: envelope?.code ?? -1,
         status: response.status,
         requestId: envelope?.requestId || requestId,
+        details: envelope?.details,
       })
     }
 
@@ -159,6 +161,50 @@ async function requestBlob(path: string, options: RequestOptions = {}): Promise<
     throw toApiError(error, requestId)
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * 解析 SSE 响应体。
+ *
+ * 事件以空行分隔，`event:` 为事件名，`data:` 可多行。
+ */
+async function consumeSseBody(
+  response: Response,
+  onEvent: (event: ServerSentEvent) => void,
+): Promise<void> {
+  if (!response.body) {
+    throw new ApiError('服务端未返回事件流', {
+      code: -4,
+      status: response.status,
+      requestId: '',
+    })
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let separator = buffer.indexOf('\n\n')
+    while (separator >= 0) {
+      const chunk = buffer.slice(0, separator)
+      buffer = buffer.slice(separator + 2)
+
+      let eventName = 'message'
+      const dataLines: string[] = []
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim()
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
+      }
+      if (dataLines.length > 0) {
+        onEvent({ event: eventName, data: dataLines.join('\n') })
+      }
+      separator = buffer.indexOf('\n\n')
+    }
   }
 }
 
@@ -201,39 +247,82 @@ async function requestSse(
         code: envelope?.code ?? -1,
         status: response.status,
         requestId: envelope?.requestId || requestId,
+        details: envelope?.details,
       })
     }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      let separator = buffer.indexOf('\n\n')
-      while (separator >= 0) {
-        const chunk = buffer.slice(0, separator)
-        buffer = buffer.slice(separator + 2)
-
-        let eventName = 'message'
-        const dataLines: string[] = []
-        for (const line of chunk.split('\n')) {
-          if (line.startsWith('event:')) eventName = line.slice(6).trim()
-          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart())
-        }
-        if (dataLines.length > 0) {
-          onEvent({ event: eventName, data: dataLines.join('\n') })
-        }
-        separator = buffer.indexOf('\n\n')
-      }
-    }
+    await consumeSseBody(response, onEvent)
   } catch (error) {
     if (controller.signal.aborted) return
     throw toApiError(error, requestId)
   } finally {
+    externalSignal?.removeEventListener('abort', abort)
+  }
+}
+
+/**
+ * 带请求体的 SSE（POST）。用于 AI 流式对话。
+ *
+ * 不设置默认总超时；由调用方通过 AbortSignal 控制停止。
+ */
+async function requestPostSse(
+  path: string,
+  body: unknown,
+  onEvent: (event: ServerSentEvent) => void,
+  options: RequestOptions = {},
+): Promise<void> {
+  const requestId = genId('req')
+  const token = getToken()
+  const controller = new AbortController()
+  const externalSignal = options.signal
+  const abort = (): void => controller.abort()
+  externalSignal?.addEventListener('abort', abort, { once: true })
+  const timer = options.timeoutMs
+    ? setTimeout(() => controller.abort(), options.timeoutMs)
+    : undefined
+
+  try {
+    const response = await fetch(buildUrl(path), {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        'X-Request-Id': requestId,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+      body: JSON.stringify(body ?? {}),
+      signal: controller.signal,
+    })
+
+    if (response.status === 401) {
+      clearToken()
+    }
+    if (!response.ok || !response.body) {
+      const envelope = (await response.json().catch(() => null)) as ApiEnvelope<null> | null
+      throw new ApiError(envelope?.message || `HTTP ${response.status}`, {
+        code: envelope?.code ?? -1,
+        status: response.status,
+        requestId: envelope?.requestId || requestId,
+        details: envelope?.details,
+      })
+    }
+
+    await consumeSseBody(response, onEvent)
+  } catch (error) {
+    if (controller.signal.aborted) {
+      if (timer) {
+        throw new ApiError('请求超时，请稍后重试', {
+          code: -2,
+          status: 0,
+          requestId,
+        })
+      }
+      return
+    }
+    throw toApiError(error, requestId)
+  } finally {
+    if (timer) clearTimeout(timer)
     externalSignal?.removeEventListener('abort', abort)
   }
 }
@@ -243,6 +332,12 @@ export const http = {
   getBlob: (path: string, options?: RequestOptions) => requestBlob(path, options),
   sse: (path: string, onEvent: (event: ServerSentEvent) => void, options?: RequestOptions) =>
     requestSse(path, onEvent, options),
+  postSse: (
+    path: string,
+    body: unknown,
+    onEvent: (event: ServerSentEvent) => void,
+    options?: RequestOptions,
+  ) => requestPostSse(path, body, onEvent, options),
   post: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>('POST', path, body, options),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>

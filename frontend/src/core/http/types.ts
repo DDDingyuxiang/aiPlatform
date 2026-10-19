@@ -29,12 +29,23 @@ export class ApiError extends Error {
   /** HTTP 状态码，网络层错误时为 0 */
   readonly status: number
   readonly requestId: string
+  /** 可选的结构化错误详情（如知识库同名冲突候选） */
+  readonly details?: unknown
 
-  constructor(message: string, info: { code: number; status: number; requestId: string }) {
+  constructor(
+    message: string,
+    info: {
+      code: number
+      status: number
+      requestId: string
+      details?: unknown
+    },
+  ) {
     super(message)
     this.name = 'ApiError'
     this.code = info.code
     this.status = info.status
     this.requestId = info.requestId
+    this.details = info.details
   }
 }

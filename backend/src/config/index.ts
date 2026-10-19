@@ -39,6 +39,94 @@ const serverEnvSchema = z
       .min(5_000)
       .max(600_000)
       .default(180_000),
+    /** 单次对话允许发送给模型的最大输入 token（包含系统提示、RAG、摘要与历史） */
+    AI_CONTEXT_MAX_TOKENS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(32_000)
+      .default(6_000),
+    /** chat template、角色标记等固定开销预留 */
+    AI_CONTEXT_OVERHEAD_TOKENS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(4_096)
+      .default(256),
+    /** 历史消息条数上限 */
+    AI_CONTEXT_HISTORY_MESSAGES: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(32),
+    /** 注入上下文的知识库资料字符上限 */
+    AI_RAG_CONTEXT_CHARS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(20_000)
+      .default(4_000),
+    /** 知识库检索超时；超时后降级为普通对话 */
+    AI_RAG_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(3_000),
+    /** 是否启用滚动摘要 */
+    AI_SUMMARY_ENABLED: z.stringbool().default(true),
+    /** 未摘要历史超过该 token 数时触发摘要 */
+    AI_SUMMARY_TRIGGER_TOKENS: z.coerce
+      .number()
+      .int()
+      .min(500)
+      .max(20_000)
+      .default(2_500),
+    /** 摘要后始终保留的最近消息条数 */
+    AI_SUMMARY_KEEP_RECENT_MESSAGES: z.coerce
+      .number()
+      .int()
+      .min(2)
+      .max(50)
+      .default(8),
+    /** 单条摘要最大字符数 */
+    AI_SUMMARY_MAX_CHARS: z.coerce
+      .number()
+      .int()
+      .min(200)
+      .max(5_000)
+      .default(1_200),
+    /** 摘要模型调用超时；CPU 推理长对话可能需要 1-3 分钟 */
+    AI_SUMMARY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(300_000)
+      .default(180_000),
+    /** 历史消息分页大小 */
+    AI_CONVERSATION_PAGE_SIZE: z.coerce
+      .number()
+      .int()
+      .min(10)
+      .max(100)
+      .default(50),
+    /** streaming 消息超过该时长仍未完成时视为中断 */
+    AI_STREAM_STALE_MS: z.coerce
+      .number()
+      .int()
+      .min(30_000)
+      .max(3_600_000)
+      .default(300_000),
+    /** 流式生成期间上游无数据的最长等待时间 */
+    AI_STREAM_IDLE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(600_000)
+      .default(180_000),
+    /** 单次流式生成的总时长上限 */
+    AI_STREAM_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(1_800_000)
+      .default(600_000),
     /** 知识库原始文件本地存储目录 */
     KNOWLEDGE_UPLOAD_DIR: z.string().trim().min(1).optional(),
     /** 知识库单文件大小上限（字节），默认 10 MiB */
@@ -62,6 +150,13 @@ const serverEnvSchema = z
     KNOWLEDGE_SEARCH_LIMIT: z.coerce.number().int().min(1).max(50).default(6),
     /** RAG 引用的最低余弦相似度，过低的结果不进入上下文 */
     KNOWLEDGE_MIN_SCORE: z.coerce.number().min(-1).max(1).default(0.4),
+    /** 为兼容旧版本向量而扩大的召回倍数 */
+    KNOWLEDGE_SEARCH_OVERFETCH: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .default(3),
   })
   .superRefine((value, ctx) => {
     // 防止把 .env.example 中的示例值直接用于生产
@@ -104,6 +199,26 @@ export interface AppConfig {
   ai: {
     serviceUrl: string
     timeoutMs: number
+    context: {
+      maxTokens: number
+      overheadTokens: number
+      historyMessages: number
+      ragContextChars: number
+      ragTimeoutMs: number
+    }
+    summary: {
+      enabled: boolean
+      triggerTokens: number
+      keepRecentMessages: number
+      maxChars: number
+      timeoutMs: number
+    }
+    conversationPageSize: number
+    streamStaleMs: number
+    stream: {
+      idleTimeoutMs: number
+      timeoutMs: number
+    }
   }
   /** 知识库文件与检索配置 */
   knowledge: {
@@ -111,6 +226,7 @@ export interface AppConfig {
     maxUploadBytes: number
     searchLimit: number
     minScore: number
+    searchOverfetch: number
     chunkSize: number
     chunkOverlap: number
   }
@@ -145,12 +261,33 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ai: {
       serviceUrl: parsed.AI_SERVICE_URL.replace(/\/+$/, ''),
       timeoutMs: parsed.AI_REQUEST_TIMEOUT_MS,
+      context: {
+        maxTokens: parsed.AI_CONTEXT_MAX_TOKENS,
+        overheadTokens: parsed.AI_CONTEXT_OVERHEAD_TOKENS,
+        historyMessages: parsed.AI_CONTEXT_HISTORY_MESSAGES,
+        ragContextChars: parsed.AI_RAG_CONTEXT_CHARS,
+        ragTimeoutMs: parsed.AI_RAG_TIMEOUT_MS,
+      },
+      summary: {
+        enabled: parsed.AI_SUMMARY_ENABLED,
+        triggerTokens: parsed.AI_SUMMARY_TRIGGER_TOKENS,
+        keepRecentMessages: parsed.AI_SUMMARY_KEEP_RECENT_MESSAGES,
+        maxChars: parsed.AI_SUMMARY_MAX_CHARS,
+        timeoutMs: parsed.AI_SUMMARY_TIMEOUT_MS,
+      },
+      conversationPageSize: parsed.AI_CONVERSATION_PAGE_SIZE,
+      streamStaleMs: parsed.AI_STREAM_STALE_MS,
+      stream: {
+        idleTimeoutMs: parsed.AI_STREAM_IDLE_TIMEOUT_MS,
+        timeoutMs: parsed.AI_STREAM_TIMEOUT_MS,
+      },
     },
     knowledge: {
       uploadDir: parsed.KNOWLEDGE_UPLOAD_DIR ?? DEFAULT_KNOWLEDGE_UPLOAD_DIR,
       maxUploadBytes: parsed.KNOWLEDGE_MAX_UPLOAD_BYTES,
       searchLimit: parsed.KNOWLEDGE_SEARCH_LIMIT,
       minScore: parsed.KNOWLEDGE_MIN_SCORE,
+      searchOverfetch: parsed.KNOWLEDGE_SEARCH_OVERFETCH,
       chunkSize: 350,
       chunkOverlap: 60,
     },

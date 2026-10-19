@@ -6,6 +6,12 @@ export type {
   KnowledgeDocCategory as DocCategory,
   KnowledgeDocFileType as DocFileType,
   KnowledgeDocStatus,
+  KnowledgeDocumentStatus,
+  KnowledgeDocumentVersion,
+  KnowledgeEmbeddingStage,
+  KnowledgeNameConflictDetails,
+  KnowledgeContentDuplicateDetails,
+  KnowledgeUploadConflictDetails,
   KnowledgeSearchHit,
   KnowledgeSearchResult,
 } from '@aiplatform/contracts'
@@ -16,6 +22,8 @@ export interface UploadKnowledgeInput {
   title: string
   category: KnowledgeDocCategory
   tags: string[]
+  /** 同名冲突时选择“仍然作为新文档” */
+  forceCreate?: boolean
 }
 
 /** 允许上传的扩展名 → 文件类型映射（与服务端解析器保持一致） */

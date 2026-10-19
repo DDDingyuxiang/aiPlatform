@@ -8,6 +8,9 @@ import {
   adminRolesResultSchema,
   aiChatRequestSchema,
   aiChatResponseSchema,
+  aiHistoryMessageSchema,
+  aiStreamDoneEventSchema,
+  aiStreamSourcesEventSchema,
   approvalItemSchema,
   chatMessageSchema,
   conversationSchema,
@@ -19,8 +22,11 @@ import {
   employeeSchema,
   extractedTaskSchema,
   knowledgeDocSchema,
+  knowledgeDocumentVersionListSchema,
+  knowledgeDocumentVersionSchema,
   knowledgeSearchHitSchema,
   knowledgeSearchQuerySchema,
+  knowledgeUploadConflictDetailsSchema,
   knowledgeUploadQuerySchema,
   taskCreatePayloadSchema,
   taskItemSchema,
@@ -184,8 +190,12 @@ test('知识库契约支持文档元数据、上传与语义检索结果', () =>
     summary: '',
     status: 'ready',
     fileName: '差旅费用报销标准.pdf',
+    currentVersionNo: 2,
+    versionCount: 2,
   })
   assert.equal(doc.status, 'ready')
+  assert.equal(doc.currentVersionNo, 2)
+  assert.equal(doc.versionCount, 2)
   assert.equal(knowledgeDocSchema.safeParse({ ...doc, category: 'other' }).success, false)
   assert.equal(knowledgeDocSchema.safeParse({ ...doc, fileType: 'zip' }).success, false)
 
@@ -209,6 +219,92 @@ test('知识库契约支持文档元数据、上传与语义检索结果', () =>
     updatedAt: doc.updatedAt,
   })
   assert.equal(hit.chunkIndex, 0)
+})
+
+test('知识库版本契约支持版本历史、冲突详情与强制新建', () => {
+  const version = knowledgeDocumentVersionSchema.parse({
+    versionNo: 2,
+    status: 'ready',
+    fileName: '差旅费用报销标准-v2.pdf',
+    sizeBytes: 2048,
+    createdAt: '2026-10-19T00:00:00Z',
+    isCurrent: true,
+  })
+  assert.equal(version.isCurrent, true)
+  assert.equal(knowledgeDocumentVersionListSchema.safeParse([version]).success, true)
+
+  const sameName = knowledgeUploadConflictDetailsSchema.parse({
+    reason: 'same_name',
+    candidates: [
+      {
+        documentId: '01KDOC0000000000000000001',
+        title: '差旅费用报销标准',
+        fileName: '差旅费用报销标准.pdf',
+        currentVersionNo: 1,
+      },
+    ],
+  })
+  assert.equal(sameName.reason, 'same_name')
+
+  const duplicate = knowledgeUploadConflictDetailsSchema.parse({
+    reason: 'duplicate_content',
+    existing: {
+      documentId: '01KDOC0000000000000000001',
+      title: '差旅费用报销标准',
+      versionNo: 1,
+    },
+  })
+  assert.equal(duplicate.reason, 'duplicate_content')
+
+  assert.equal(
+    knowledgeUploadQuerySchema.parse({
+      title: '制度',
+      fileName: '制度.pdf',
+      forceCreate: 'true',
+    }).forceCreate,
+    true,
+  )
+  assert.equal(
+    knowledgeUploadQuerySchema.parse({
+      title: '制度',
+      fileName: '制度.pdf',
+    }).forceCreate,
+    undefined,
+  )
+})
+
+test('AI 流式事件与历史消息携带知识库检索状态', () => {
+  const sources = aiStreamSourcesEventSchema.parse({
+    type: 'sources',
+    sources: [],
+    status: 'unavailable',
+  })
+  assert.equal(sources.status, 'unavailable')
+  assert.equal(
+    aiStreamSourcesEventSchema.safeParse({ type: 'sources', sources: [] }).success,
+    false,
+  )
+
+  const done = aiStreamDoneEventSchema.parse({
+    type: 'done',
+    assistantMessageId: '01J00000000000000000000002',
+    content: '基于通用知识的回答',
+    model: 'qwen3-local',
+    finishReason: 'stop',
+    knowledgeStatus: 'empty',
+  })
+  assert.equal(done.knowledgeStatus, 'empty')
+
+  const message = aiHistoryMessageSchema.parse({
+    id: '01J00000000000000000000002',
+    role: 'assistant',
+    content: '基于企业知识库的回答',
+    sources: [],
+    status: 'completed',
+    knowledgeStatus: 'used',
+    createdAt: '2026-10-19T00:00:00Z',
+  })
+  assert.equal(message.knowledgeStatus, 'used')
 })
 
 test('任务更新契约支持分配者修改内容，且至少提交一项', () => {

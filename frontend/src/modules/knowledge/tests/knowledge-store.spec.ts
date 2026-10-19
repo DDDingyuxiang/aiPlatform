@@ -6,6 +6,9 @@ import { createPinia, type Pinia } from 'pinia'
 import { useAuthStore } from '@/core/auth/store'
 import { clearToken } from '@/core/auth/token'
 import { useKnowledgeStore } from '@/modules/knowledge'
+import type { KnowledgeDoc } from '@/modules/knowledge'
+import { knowledgeApi } from '../api'
+import type { KnowledgeDocumentVersion } from '../types'
 import '@/core/auth/mock'
 import '@/modules/identity/mock'
 import '@/modules/knowledge/mock'
@@ -37,6 +40,7 @@ describe('knowledge store', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.useRealTimers()
   })
 
@@ -86,5 +90,108 @@ describe('knowledge store', () => {
 
     store.clearSearch()
     expect(store.searchHits).toHaveLength(0)
+  })
+})
+
+describe('knowledge status polling', () => {
+  const pendingDoc: KnowledgeDoc = {
+    id: 'k-poll',
+    title: '异步索引文档',
+    category: 'policy',
+    fileType: 'txt',
+    sizeBytes: 120,
+    owner: { id: 'u-001', name: '王立' },
+    department: '综合管理部',
+    updatedAt: '2026-10-19T00:00:00.000Z',
+    tags: [],
+    summary: '',
+    status: 'pending',
+    fileName: 'poll.txt',
+    versionCount: 1,
+  }
+  const readyDoc: KnowledgeDoc = {
+    ...pendingDoc,
+    status: 'ready',
+    currentVersionNo: 1,
+  }
+  const pendingVersion: KnowledgeDocumentVersion = {
+    versionNo: 1,
+    status: 'pending',
+    fileName: 'poll.txt',
+    sizeBytes: 120,
+    createdAt: '2026-10-19T00:00:00.000Z',
+    isCurrent: false,
+    jobStage: 'queued',
+    jobProgress: 0,
+  }
+  const readyVersion: KnowledgeDocumentVersion = {
+    ...pendingVersion,
+    status: 'ready',
+    isCurrent: true,
+    jobStage: 'completed',
+    jobProgress: 100,
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+    clearToken()
+    pinia = createPinia()
+    vi.useFakeTimers()
+  })
+
+  it('加载到 pending 文档后轮询状态并更新缓存', async () => {
+    vi.spyOn(knowledgeApi, 'documents').mockResolvedValue([pendingDoc])
+    const status = vi
+      .spyOn(knowledgeApi, 'status')
+      .mockResolvedValueOnce({
+        document: pendingDoc,
+        version: pendingVersion,
+        job: null,
+      })
+      .mockResolvedValueOnce({
+        document: readyDoc,
+        version: readyVersion,
+        job: null,
+      })
+    const store = useKnowledgeStore(pinia)
+
+    await store.loadAll()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(status).toHaveBeenCalledTimes(1)
+    expect(store.docs[0]?.status).toBe('pending')
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(status).toHaveBeenCalledTimes(2)
+    expect(store.docs[0]?.status).toBe('ready')
+    expect(store.docs[0]?.currentVersionNo).toBe(1)
+
+    // 就绪后停止轮询
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(status).toHaveBeenCalledTimes(2)
+  })
+
+  it('打开 pending 版本时按 versionNo 轮询并更新版本进度', async () => {
+    vi.spyOn(knowledgeApi, 'documents').mockResolvedValue([readyDoc])
+    vi.spyOn(knowledgeApi, 'versions').mockResolvedValue([
+      pendingVersion,
+      { ...readyVersion, versionNo: 0, isCurrent: false, status: 'ready' },
+    ])
+    const status = vi.spyOn(knowledgeApi, 'status').mockResolvedValue({
+      document: readyDoc,
+      version: { ...readyVersion, versionNo: 2 },
+      job: null,
+    })
+    const store = useKnowledgeStore(pinia)
+
+    await store.loadVersions('k-poll')
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(status).toHaveBeenCalledWith('k-poll', 1)
+    expect(store.versionsById['k-poll']?.[0]).toMatchObject({
+      versionNo: 2,
+      status: 'ready',
+      jobProgress: 100,
+    })
   })
 })

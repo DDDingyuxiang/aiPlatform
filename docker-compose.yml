@@ -57,6 +57,13 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3-local:latest}
       OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-180}
+      OLLAMA_THINK: ${OLLAMA_THINK:-false}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-1024}
+      OLLAMA_TASK_NUM_PREDICT: ${OLLAMA_TASK_NUM_PREDICT:-256}
+      OLLAMA_SUMMARY_NUM_PREDICT: ${OLLAMA_SUMMARY_NUM_PREDICT:-512}
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      OLLAMA_NO_THINK_FALLBACK: ${OLLAMA_NO_THINK_FALLBACK:-true}
       # BGE-M3 ONNX 模型目录需包含 onnx/model.onnx、model.onnx_data、tokenizer.json
       EMBEDDING_MODEL_PATH: /models/bge-m3
       EMBEDDING_MODEL_NAME: ${EMBEDDING_MODEL_NAME:-BAAI/bge-m3}
@@ -133,12 +140,27 @@ services:
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
       AI_SERVICE_URL: http://ai-service:8000
       AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-180000}
+      AI_CONTEXT_MAX_TOKENS: ${AI_CONTEXT_MAX_TOKENS:-6000}
+      AI_CONTEXT_OVERHEAD_TOKENS: ${AI_CONTEXT_OVERHEAD_TOKENS:-256}
+      AI_CONTEXT_HISTORY_MESSAGES: ${AI_CONTEXT_HISTORY_MESSAGES:-32}
+      AI_RAG_CONTEXT_CHARS: ${AI_RAG_CONTEXT_CHARS:-4000}
+      AI_RAG_TIMEOUT_MS: ${AI_RAG_TIMEOUT_MS:-3000}
+      AI_SUMMARY_ENABLED: ${AI_SUMMARY_ENABLED:-true}
+      AI_SUMMARY_TRIGGER_TOKENS: ${AI_SUMMARY_TRIGGER_TOKENS:-2500}
+      AI_SUMMARY_KEEP_RECENT_MESSAGES: ${AI_SUMMARY_KEEP_RECENT_MESSAGES:-8}
+      AI_SUMMARY_MAX_CHARS: ${AI_SUMMARY_MAX_CHARS:-1200}
+      AI_SUMMARY_TIMEOUT_MS: ${AI_SUMMARY_TIMEOUT_MS:-180000}
+      AI_CONVERSATION_PAGE_SIZE: ${AI_CONVERSATION_PAGE_SIZE:-50}
+      AI_STREAM_STALE_MS: ${AI_STREAM_STALE_MS:-300000}
+      AI_STREAM_IDLE_TIMEOUT_MS: ${AI_STREAM_IDLE_TIMEOUT_MS:-180000}
+      AI_STREAM_TIMEOUT_MS: ${AI_STREAM_TIMEOUT_MS:-600000}
       CHAT_UPLOAD_DIR: /app/backend/storage/uploads
       CHAT_MAX_UPLOAD_BYTES: ${CHAT_MAX_UPLOAD_BYTES:-20971520}
       KNOWLEDGE_UPLOAD_DIR: /app/backend/storage/knowledge
       KNOWLEDGE_MAX_UPLOAD_BYTES: ${KNOWLEDGE_MAX_UPLOAD_BYTES:-10485760}
       KNOWLEDGE_SEARCH_LIMIT: ${KNOWLEDGE_SEARCH_LIMIT:-6}
       KNOWLEDGE_MIN_SCORE: ${KNOWLEDGE_MIN_SCORE:-0.4}
+      KNOWLEDGE_SEARCH_OVERFETCH: ${KNOWLEDGE_SEARCH_OVERFETCH:-3}
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-document_chunks}
       QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1024}
@@ -156,6 +178,48 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+
+  # 知识库后台索引 Worker：消费 Redis 队列，解析/分块/向量化/写入 Qdrant
+  knowledge-worker:
+    image: aiplatform-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+      ai-service:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ai_platform
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+      AI_SERVICE_URL: http://ai-service:8000
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-180000}
+      KNOWLEDGE_UPLOAD_DIR: /app/backend/storage/knowledge
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-document_chunks}
+      QDRANT_VECTOR_SIZE: ${QDRANT_VECTOR_SIZE:-1024}
+    volumes:
+      - backend_storage:/app/backend/storage
+    command: ["node", "dist/worker.js"]
 
   # 整个部署唯一对外发布的端口：浏览器只访问 Nginx（静态资源 + /api + SSE）
   frontend:

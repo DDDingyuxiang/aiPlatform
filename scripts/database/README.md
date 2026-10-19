@@ -13,7 +13,12 @@ scripts/database/
 │   ├── 04_tasks_audit_settings.sql  后台任务、审计与系统配置
 │   ├── 05_workflows.sql         审批流程定义与审批单
 │   ├── 06_tasks.sql             业务任务表
-│   └── 07_knowledge_metadata.sql 知识库文档展示元数据
+│   ├── 07_knowledge_metadata.sql 知识库文档展示元数据
+│   ├── 08_ai_conversations.sql  智能对话会话、消息与滚动摘要
+│   ├── 09_knowledge_versioning.sql 知识库文档版本与当前版本指针
+│   ├── 10_ai_message_knowledge_status.sql 回答的知识库检索状态
+│   ├── 11_embedding_job_progress.sql 索引任务阶段与进度
+│   └── ...                      后续编号迁移
 └── qdrant/                      Qdrant collection 初始化（非 SQL）
     ├── README.md
     └── create_collection.sh
@@ -56,7 +61,7 @@ scripts/database/
 ```bash
 mysql -h 127.0.0.1 -u <user> -p < scripts/database/mysql/00_create_database.sql
 
-for file in scripts/database/mysql/0{1,2,3,4,5}_*.sql; do
+for file in scripts/database/mysql/[0-9][0-9]_*.sql; do
   mysql -h 127.0.0.1 -u <user> -p ai_platform < "$file"
 done
 ```

@@ -5,7 +5,19 @@ import type { Logger } from '../shared/logger.js'
 /** ioredis 客户端（键前缀由配置注入，业务代码使用不带前缀的键名） */
 export type RedisClient = Redis
 
-export function createRedisClient(config: RedisConfig, logger?: Logger): RedisClient {
+export interface RedisClientOptions {
+  /**
+   * 关闭命令超时。BRPOPLPUSH 等阻塞命令的等待时间会超过普通命令超时，
+   * 使用该客户端时由调用方自行控制阻塞时长。
+   */
+  disableCommandTimeout?: boolean
+}
+
+export function createRedisClient(
+  config: RedisConfig,
+  logger?: Logger,
+  options: RedisClientOptions = {},
+): RedisClient {
   const client = new Redis({
     host: config.host,
     port: config.port,
@@ -13,7 +25,9 @@ export function createRedisClient(config: RedisConfig, logger?: Logger): RedisCl
     ...(config.password ? { password: config.password } : {}),
     keyPrefix: config.keyPrefix,
     connectTimeout: config.connectTimeoutMs,
-    commandTimeout: config.commandTimeoutMs,
+    ...(options.disableCommandTimeout
+      ? {}
+      : { commandTimeout: config.commandTimeoutMs }),
     maxRetriesPerRequest: 2,
     enableReadyCheck: true,
   })

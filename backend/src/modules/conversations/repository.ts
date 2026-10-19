@@ -401,6 +401,44 @@ export function createMySqlConversationsRepository(pool: Pool): ConversationsRep
       return rows.map((row) => toMessageRecord(row, attachments.get(row.id) ?? []))
     },
 
+    async listRecentMessages(tenantId, conversationId, limit, options = {}) {
+      const systemClause = options.excludeSystem
+        ? `AND m.message_type <> 'system'`
+        : ''
+      const [rows] = await pool.execute<MessageRow[]>(
+        `SELECT m.id,
+                m.conversation_id,
+                c.public_id AS conversation_public_id,
+                e.public_id AS sender_public_id,
+                m.message_type,
+                m.content,
+                m.created_at
+           FROM messages m
+           JOIN conversations c
+             ON c.tenant_id = m.tenant_id
+            AND c.id = m.conversation_id
+           JOIN employees e
+             ON e.tenant_id = m.tenant_id
+            AND e.id = m.sender_employee_id
+          WHERE m.tenant_id = ?
+            AND m.conversation_id = ?
+            AND m.deleted_at IS NULL
+            ${systemClause}
+          ORDER BY m.created_at DESC, m.id DESC
+          LIMIT ?`,
+        [tenantId, conversationId, limit],
+      )
+
+      const chronological = rows.reverse()
+      const attachments = await loadAttachments(
+        tenantId,
+        chronological.map((row) => row.id),
+      )
+      return chronological.map((row) =>
+        toMessageRecord(row, attachments.get(row.id) ?? []),
+      )
+    },
+
     async createMessage(tenantId, conversation, senderEmployeeId, record) {
       return withTransaction(async (connection) => {
         const [messageResult] = await connection.execute<ResultSetHeader>(

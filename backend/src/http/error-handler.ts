@@ -50,7 +50,14 @@ export function createErrorHandler(logger: Logger): ErrorRequestHandler {
       } else {
         logger.warn('request.rejected', { ...fields, error: error.message })
       }
-      sendFailure(res, error.code, error.message, requestId, error.status)
+      sendFailure(
+        res,
+        error.code,
+        error.message,
+        requestId,
+        error.status,
+        error.details,
+      )
       return
     }
 

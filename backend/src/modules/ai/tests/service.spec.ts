@@ -41,7 +41,9 @@ describe('AI service proxy', () => {
       messages: Array<{ role: string; content: string }>
       temperature: number
     }
-    expect(body.messages[0]).toEqual({ role: 'system', content: '系统提示' })
+    expect(body.messages[0]?.role).toBe('system')
+    expect(body.messages[0]?.content).toContain('系统提示')
+    expect(body.messages[0]?.content).toContain('未启用企业知识库检索')
     expect(body.messages[1]).toEqual({ role: 'user', content: '你好' })
     expect(body.temperature).toBe(0.3)
   })

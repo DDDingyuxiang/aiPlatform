@@ -119,6 +119,14 @@ export interface ConversationsRepository {
 
   listMessages(tenantId: string, conversationId: string): Promise<MessageRecord[]>
 
+  /** 只取最近 N 条消息（时间正序返回），避免长会话全量读取 */
+  listRecentMessages(
+    tenantId: string,
+    conversationId: string,
+    limit: number,
+    options?: { excludeSystem?: boolean },
+  ): Promise<MessageRecord[]>
+
   createMessage(
     tenantId: string,
     conversation: ConversationRefRecord,

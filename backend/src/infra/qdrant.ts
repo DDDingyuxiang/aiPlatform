@@ -26,6 +26,7 @@ export interface VectorStore {
   upsert(points: VectorPoint[]): Promise<void>
   search(vector: number[], tenantId: string, limit: number): Promise<VectorSearchHit[]>
   deleteDocument(tenantId: string, documentId: number): Promise<void>
+  deleteVersion(tenantId: string, documentVersionId: number): Promise<void>
 }
 
 interface QdrantResponse<T> {
@@ -156,6 +157,24 @@ export function createQdrantVectorStore(
       })
       if (response.status >= 300) {
         throw new Error(`删除 Qdrant 向量失败（HTTP ${response.status}）`)
+      }
+    },
+
+    async deleteVersion(tenantId, documentVersionId) {
+      await ensureCollection()
+      const response = await request('POST', '/points/delete?wait=true', {
+        filter: {
+          must: [
+            { key: 'tenant_id', match: { value: Number(tenantId) } },
+            {
+              key: 'document_version_id',
+              match: { value: documentVersionId },
+            },
+          ],
+        },
+      })
+      if (response.status >= 300) {
+        throw new Error(`删除版本向量失败（HTTP ${response.status}）`)
       }
     },
   }
