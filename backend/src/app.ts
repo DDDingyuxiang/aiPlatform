@@ -25,6 +25,8 @@ export interface CreateAppOptions {
   knowledgeRouter: Router
   /** announcements 模块导出的公告路由 */
   announcementsRouter: Router
+  /** workflows 模块导出的审批路由 */
+  workflowsRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -74,6 +76,7 @@ export function createApp(options: CreateAppOptions): Express {
   api.use('/tasks', options.tasksRouter)
   api.use('/knowledge', options.knowledgeRouter)
   api.use('/announcements', options.announcementsRouter)
+  api.use('/workflows', options.workflowsRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

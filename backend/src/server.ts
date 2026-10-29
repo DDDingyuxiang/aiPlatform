@@ -55,6 +55,11 @@ import {
   createAnnouncementsService,
   createMySqlAnnouncementsRepository,
 } from './modules/announcements/index.js'
+import {
+  createMySqlWorkflowRepository,
+  createWorkflowRouter,
+  createWorkflowService,
+} from './modules/workflows/index.js'
 
 async function main(): Promise<void> {
   loadEnvFile()
@@ -136,6 +141,12 @@ async function main(): Promise<void> {
     service: announcementsService,
     requireAuth,
     requirePublish: requirePermission('announcements.publish'),
+  })
+
+  const workflowService = createWorkflowService(createMySqlWorkflowRepository(pool))
+  const workflowsRouter = createWorkflowRouter({
+    service: workflowService,
+    requireAuth,
   })
 
   const embeddings = createEmbeddingService({
@@ -235,6 +246,7 @@ async function main(): Promise<void> {
     tasksRouter,
     knowledgeRouter,
     announcementsRouter,
+    workflowsRouter,
     healthCheck: async () => {
       await pingDatabase(pool)
       await pingRedis(redis)

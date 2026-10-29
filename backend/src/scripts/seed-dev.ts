@@ -10,7 +10,7 @@ import {
   EMPLOYEE_MANAGE_PERMISSION,
   SUPER_ADMIN_PERMISSION,
 } from '@aiplatform/contracts'
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise'
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { loadEnvFile } from '../config/env.js'
 import { loadAppConfig } from '../config/index.js'
 import { createDatabasePool } from '../infra/db.js'
@@ -152,6 +152,62 @@ async function ensureRolePermission(
      VALUES (?, ?)`,
     [roleId, permissionId],
   )
+}
+
+/** 为演示企业补齐默认审批模板；已有启用流程不覆盖。 */
+async function ensureDefaultApprovalWorkflows(
+  connection: PoolConnection,
+  tenantId: string,
+  createdBy: string,
+  approverRoleId: string,
+): Promise<void> {
+  const definitions = [
+    { type: 'expense', code: 'expense', name: '费用报销审批' },
+    { type: 'leave', code: 'leave', name: '请假审批' },
+    { type: 'purchase', code: 'purchase', name: '采购审批' },
+    { type: 'contract', code: 'contract', name: '合同审批' },
+  ] as const
+
+  for (const definition of definitions) {
+    const activeId = await findId(
+      connection,
+      `SELECT id FROM workflow_definitions
+        WHERE tenant_id = ? AND code = ? AND status = 'active' AND deleted_at IS NULL
+        ORDER BY version DESC LIMIT 1`,
+      [tenantId, definition.code],
+    )
+    if (activeId) continue
+
+    const [versionRows] = await connection.execute<
+      Array<RowDataPacket & { max_version: number | null }>
+    >(
+      'SELECT MAX(version) AS max_version FROM workflow_definitions WHERE tenant_id = ? AND code = ?',
+      [tenantId, definition.code],
+    )
+    const version = Number(versionRows.at(0)?.max_version ?? 0) + 1
+    const [insert] = await connection.execute<ResultSetHeader>(
+      `INSERT INTO workflow_definitions
+         (tenant_id, public_id, code, name, approval_type, version, description, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      [
+        tenantId,
+        ulid(),
+        definition.code,
+        definition.name,
+        definition.type,
+        version,
+        '默认由本企业管理员角色审批，可在后续版本中调整流程。',
+        createdBy,
+      ],
+    )
+    await connection.execute(
+      `INSERT INTO workflow_definition_nodes
+         (tenant_id, workflow_definition_id, node_key, node_name, sequence_no,
+          approver_type, approver_ref_id, approval_mode)
+       VALUES (?, ?, 'admin_review', '管理员审批', 1, 'role', ?, 'any')`,
+      [tenantId, String(insert.insertId), approverRoleId],
+    )
+  }
 }
 
 interface SeedEmployee {
@@ -353,7 +409,7 @@ async function main(): Promise<void> {
     )
 
     const adminRoleId = await ensureRole(connection, demoTenantId, 'admin', '管理员')
-    await ensureRole(connection, demoTenantId, 'employee', '员工')
+    const employeeRoleId = await ensureRole(connection, demoTenantId, 'employee', '员工')
     await ensureRolePermission(connection, adminRoleId, employeeManagePermissionId)
     await ensureRolePermission(connection, adminRoleId, announcementPublishPermissionId)
 
@@ -392,6 +448,23 @@ async function main(): Promise<void> {
     })
     await ensureMembership(connection, demoTenantId, adminEmployeeId, demoDepartmentId)
     await ensureEmployeeRole(connection, demoTenantId, adminEmployeeId, adminRoleId)
+    await ensureDefaultApprovalWorkflows(
+      connection,
+      demoTenantId,
+      adminEmployeeId,
+      adminRoleId,
+    )
+
+    const demoEmployeeId = await ensureEmployee(connection, demoTenantId, passwordHash, {
+      username: 'employee',
+      employeeNo: 'E1002',
+      email: 'employee@example.com',
+      displayName: '演示员工',
+      position: '业务专员',
+      phone: '13800001002',
+    })
+    await ensureMembership(connection, demoTenantId, demoEmployeeId, demoDepartmentId)
+    await ensureEmployeeRole(connection, demoTenantId, demoEmployeeId, employeeRoleId)
 
     const platformAdminEmployeeId = await ensureEmployee(
       connection,

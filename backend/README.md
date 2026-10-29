@@ -107,6 +107,9 @@ pnpm backend:dev          # http://localhost:3000
 
 同时幂等创建/修复权限码 `system.employee.manage`、`system.super_admin`，
 以及对应角色关联；上一版种子遗留在演示公司的 `super_admin` 角色分配会被清理。
+演示企业还会补齐费用报销、请假、采购、合同四类默认审批流程，均由公司管理员角色审批；
+已有启用流程不会被种子覆盖。`employee` 演示账号可发起申请，`admin` 演示账号负责审批，
+两者密码均为 `SEED_ADMIN_PASSWORD`。
 
 ## API
 
@@ -131,12 +134,15 @@ pnpm backend:dev          # http://localhost:3000
 | PATCH | `/api/v1/admin/users/:id` | 是 + 员工管理 | 更新员工（用户名/工号不可改） |
 | DELETE | `/api/v1/admin/users/:id` | 是 + 员工管理 | 软删除员工（禁止删除自己/平台最后一个超管） |
 | GET | `/api/v1/admin/roles` | 是 + 员工管理 | 指定公司的角色、成员数、权限与权限目录 |
+| GET | `/api/v1/workflows/approvals` | 是 | 当前用户发起或参与的审批单 |
+| POST | `/api/v1/workflows/approvals` | 是 | 按当前启用流程发起审批 |
+| POST | `/api/v1/workflows/approvals/:id/decision` | 是 | 处理当前分配给自己的审批节点 |
 
 “员工管理”权限为 `system.super_admin` 或 `system.employee.manage` 任一。
 受保护接口使用 `Authorization: Bearer <token>`。错误响应包含稳定错误码：
 `40000` 参数不合法、`40100` 登录失效、`40101` 凭证错误、`40300` 无权限、
 `40400` 不存在、`40901` 邮箱冲突、`40902` 用户名冲突、`40903` 工号冲突、
-`50000` 内部错误、`50300` 依赖不可用。
+`40900` 审批冲突、`50000` 内部错误、`50300` 依赖不可用。
 
 ## 认证与租户说明
 
