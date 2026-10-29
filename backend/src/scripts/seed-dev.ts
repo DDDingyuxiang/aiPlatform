@@ -1,8 +1,8 @@
 /**
- * 本地开发种子数据（仅用于开发/测试，不参与生产部署）。
+ * 开发演示数据与部署引导账号。
  *
  * 前置条件：已执行 scripts/database/mysql 下的初始化脚本。
- * 密码来自 SEED_ADMIN_PASSWORD，不写入代码与版本库。
+ * 账号密码从环境变量读取，不写入代码与版本库。
  */
 import { ulid } from 'ulid'
 import {
@@ -361,22 +361,78 @@ async function ensureEmployeeRole(
   )
 }
 
+/** 运行服务只需要常规 DML；root 仅由一次性 seed 容器使用并创建该账号。 */
+async function ensureRuntimeDatabaseUser(
+  connection: PoolConnection,
+  password: string,
+): Promise<void> {
+  if (!/^[a-fA-F0-9]{64}$/.test(password)) {
+    throw new Error('APP_DB_PASSWORD 必须是 openssl rand -hex 32 生成的 64 位十六进制值')
+  }
+  // 密码已限制为十六进制，安全地内嵌在 MySQL 账号管理语句中。
+  await connection.query(
+    `CREATE USER IF NOT EXISTS 'aiplatform_app'@'%' IDENTIFIED BY '${password}'`,
+  )
+  await connection.query(
+    `ALTER USER 'aiplatform_app'@'%' IDENTIFIED BY '${password}'`,
+  )
+  await connection.query(
+    'GRANT SELECT, INSERT, UPDATE, DELETE ON ai_platform.* TO \'aiplatform_app\'@\'%\'',
+  )
+}
+
 async function main(): Promise<void> {
   loadEnvFile()
   const config = loadAppConfig()
 
   const password = process.env.SEED_ADMIN_PASSWORD
-  if (!password || password.length < 8) {
-    throw new Error('请通过 SEED_ADMIN_PASSWORD 设置至少 8 位的种子账号密码')
+  const platformPassword = process.env.PLATFORM_SUPERADMIN_PASSWORD
+  const isProduction = config.env === 'production'
+  const minimumPasswordLength = isProduction ? 16 : 8
+  if (
+    isProduction &&
+    (config.database.password.length < 24 ||
+      /^(change-me|replace-with|password)/i.test(config.database.password))
+  ) {
+    throw new Error('生产环境 MYSQL_ROOT_PASSWORD 必须至少 24 位且不能使用示例值')
+  }
+  if (
+    !password ||
+    password.length < minimumPasswordLength ||
+    (isProduction && /^(change-me|replace-with|password)/i.test(password))
+  ) {
+    throw new Error(`请通过 SEED_ADMIN_PASSWORD 设置至少 ${minimumPasswordLength} 位的独立强密码`)
+  }
+  if (
+    isProduction &&
+    (!platformPassword ||
+      platformPassword.length < 16 ||
+      /^(change-me|replace-with|password)/i.test(platformPassword) ||
+      platformPassword === password)
+  ) {
+    throw new Error('生产环境必须设置独立于 SEED_ADMIN_PASSWORD 的 PLATFORM_SUPERADMIN_PASSWORD（至少 16 位）')
+  }
+  if (platformPassword && platformPassword === password) {
+    throw new Error('PLATFORM_SUPERADMIN_PASSWORD 必须与 SEED_ADMIN_PASSWORD 不同')
+  }
+
+  const resolvedPlatformPassword = platformPassword ?? password
+  const runtimeDatabasePassword = process.env.APP_DB_PASSWORD
+  if (isProduction && !runtimeDatabasePassword) {
+    throw new Error('生产环境必须设置 APP_DB_PASSWORD')
   }
 
   const companyCode = process.env.SEED_COMPANY_CODE ?? 'demo'
   const companyName = process.env.SEED_COMPANY_NAME ?? '演示企业'
   const passwordHash = await hashPassword(password)
+  const platformPasswordHash = await hashPassword(resolvedPlatformPassword)
   const pool = createDatabasePool(config.database)
   const connection = await pool.getConnection()
 
   try {
+    if (isProduction && runtimeDatabasePassword) {
+      await ensureRuntimeDatabaseUser(connection, runtimeDatabasePassword)
+    }
     await connection.beginTransaction()
 
     const demoTenantId = await ensureCompany(connection, companyCode, companyName)
@@ -469,7 +525,7 @@ async function main(): Promise<void> {
     const platformAdminEmployeeId = await ensureEmployee(
       connection,
       platformTenantId,
-      passwordHash,
+      platformPasswordHash,
       {
         username: 'superadmin',
         employeeNo: 'P0001',

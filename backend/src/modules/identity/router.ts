@@ -7,14 +7,16 @@ import type { IdentityService } from './types.js'
 export interface AuthRouterOptions {
   service: IdentityService
   requireAuth: RequestHandler
+  loginRateLimit?: RequestHandler
 }
 
 /** 认证接口：/api/v1/auth */
 export function createAuthRouter(options: AuthRouterOptions): Router {
   const router = Router()
   const { service, requireAuth } = options
+  const loginRateLimit = options.loginRateLimit ?? ((_req, _res, next) => next())
 
-  router.post('/login', async (req, res) => {
+  router.post('/login', loginRateLimit, async (req, res) => {
     const payload = loginPayloadSchema.parse(req.body)
     const result = await service.login(payload)
     sendSuccess(res, result, req.requestId)

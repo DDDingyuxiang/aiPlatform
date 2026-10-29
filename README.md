@@ -129,9 +129,13 @@ cp .env.example .env
 至少修改：
 
 - `MYSQL_ROOT_PASSWORD`
-- `JWT_SECRET`（至少 32 字符，可用 `openssl rand -hex 32` 生成）
-- `SEED_ADMIN_PASSWORD`
+- `APP_DB_PASSWORD`（运行服务账号密码，用 `openssl rand -hex 32` 生成）
+- `JWT_SECRET`（至少 32 字符，用 `openssl rand -hex 32` 生成）
+- `SEED_ADMIN_PASSWORD` 和独立的 `PLATFORM_SUPERADMIN_PASSWORD`（生产环境至少 16 位）
 - `BGE_M3_MODEL_DIR`（指向宿主机上的 BGE-M3 模型目录）
+
+默认 `FRONTEND_BIND_ADDRESS=127.0.0.1`，网页只从本机可访问。生产环境应在本机端口前
+配置 HTTPS 反向代理，不要把 HTTP 端口改为公网监听。
 
 如果 8080 已被占用，修改 `FRONTEND_PORT`（例如 `8081`）。
 
@@ -164,11 +168,11 @@ docker compose up -d --build
 http://localhost:${FRONTEND_PORT}
 ```
 
-默认前端端口为 `8080`。对外发布情况：
+默认前端端口为 `8080`，只绑定 `127.0.0.1`。对外发布情况：
 
 | 服务                   | 是否暴露到宿主机 | 说明                                   |
 | ---------------------- | ---------------- | -------------------------------------- |
-| 前端 / Nginx           | 是               | 唯一访问入口，同时代理 `/api` 与 SSE |
+| 前端 / Nginx           | 是，仅本机       | 唯一入口，同时代理 `/api` 与 SSE；外部流量应经 HTTPS 反向代理 |
 | 业务后端               | 否               | 仅在 Compose 网络内，由 Nginx 转发     |
 | 知识库 Worker          | 否               | 后台进程，无 HTTP 入口                 |
 | AI 服务                | 否               | 仅后端与 Worker 访问                   |
@@ -182,7 +186,8 @@ http://localhost:${FRONTEND_PORT}
 | `employee`   | 演示企业普通员工，可发起审批 |
 | `superadmin` | 平台超级管理员 |
 
-密码为 `.env` 中的 `SEED_ADMIN_PASSWORD`。
+`admin` 和 `employee` 使用 `.env` 中的 `SEED_ADMIN_PASSWORD`；`superadmin` 使用独立的
+`PLATFORM_SUPERADMIN_PASSWORD`。每次 seed 启动都会将种子账号密码同步为这两个变量的当前值。
 
 ### 5. 可选：把 Ollama 也放进 Docker
 
@@ -277,10 +282,11 @@ pnpm frontend:dev     # Vite，默认 http://localhost:5173
 
 ## 七、生产部署要点
 
-1. **入口收敛**：默认只发布 Nginx 端口，MySQL、Redis、Qdrant、AI 服务与后端均
-   只在 Compose 内部网络。生产环境建议在 Nginx 前增加 HTTPS 反向代理。
-2. **密钥管理**：`.env` 不提交版本库；生产环境的 `JWT_SECRET`、数据库密码等由
-   密钥管理系统注入，不要使用示例值。
+1. **入口收敛**：Nginx 默认只绑定 `127.0.0.1`，MySQL、Redis、Qdrant、AI 服务与后端
+   均只在 Compose 内部网络。对外提供服务时必须经 HTTPS 反向代理，并在 TLS 终止层启用 HSTS。
+2. **密钥管理**：`.env` 不提交版本库；生产环境的 `JWT_SECRET`、root 密码、运行库账号密码、
+   企业种子密码和平台超管密码均应独立生成并由密钥管理系统注入。Seed 会为后端/Worker
+   创建仅有 `ai_platform` 库 DML 权限的 `aiplatform_app` 账号；root 凭据只进入一次性 seed 容器。
 3. **CORS**：将 `CORS_ORIGINS` 设置为实际访问域名。
 4. **数据持久化**：MySQL、Redis、Qdrant 与 `backend_storage`（聊天附件、知识库
    原文件）均使用数据卷；需备份 MySQL 和文件存储，Qdrant 可按原文件重建。
@@ -288,9 +294,10 @@ pnpm frontend:dev     # Vite，默认 http://localhost:5173
    改成带租约/owner 的队列，避免多个 Worker 同时恢复 processing 任务。
 6. **资源限制**：Embedding 与聊天模型可能占用较多 CPU/内存；CPU 环境下首次加载
    模型可能达到数十秒。Compose 为 AI 服务配置了健康检查，请据此设置编排超时。
-7. **上传限制**：Nginx 请求体上限 25 MB；聊天附件默认 20 MB，知识库单文件默认
-   10 MB，可分别通过 `CHAT_MAX_UPLOAD_BYTES`、`KNOWLEDGE_MAX_UPLOAD_BYTES`
-   调整。
+7. **请求和上传限制**：登录按 IP（60 次/15 分钟）与 IP/账号（10 次/15 分钟）限流；
+   已登录 API 每账号 300 次/分钟、AI 生成 20 次/10 分钟、知识库上传/重索引 10 次/小时。
+   Office 压缩文档最多 1,000 个条目、单条目解压 16 MiB、总解压 32 MiB。Nginx 请求体上限
+   25 MB；聊天附件默认 20 MB，知识库单文件默认 10 MB。
 8. **端口调试**：`docker-compose.dev.yml` 仅用于本机调试，会以
    `127.0.0.1` 暴露 MySQL/Redis/Qdrant，禁止用于生产：
 
@@ -305,11 +312,14 @@ pnpm frontend:dev     # Vite，默认 http://localhost:5173
 | 变量                       | 说明                        | 默认值                                |
 | -------------------------- | --------------------------- | ------------------------------------- |
 | `FRONTEND_PORT`          | Nginx 对外端口              | `8080`                              |
+| `FRONTEND_BIND_ADDRESS`  | Nginx 宿主机绑定地址        | `127.0.0.1`                         |
 | `MYSQL_ROOT_PASSWORD`    | MySQL root 密码（Compose）  | 无，必须设置                          |
+| `APP_DB_PASSWORD`        | 后端/Worker 受限账号密码（64 位 hex） | 无，必须设置                  |
 | `JWT_SECRET`             | JWT 签名密钥，至少 32 字符  | 无，必须设置                          |
 | `JWT_TTL_SECONDS`        | 登录令牌有效期              | `7200`                              |
 | `CORS_ORIGINS`           | 允许的前端来源，逗号分隔    | `http://localhost:8080`             |
-| `SEED_ADMIN_PASSWORD`    | 种子管理员密码，至少 8 位   | 无，必须设置                          |
+| `SEED_ADMIN_PASSWORD`    | 企业种子账号密码            | 无，生产至少 16 位                    |
+| `PLATFORM_SUPERADMIN_PASSWORD` | 平台超管独立密码      | 无，生产至少 16 位                    |
 | `OLLAMA_BASE_URL`        | Ollama 地址                 | `http://host.docker.internal:11434` |
 | `OLLAMA_MODEL`           | 聊天模型名                  | `qwen3-local:latest`                |
 | `OLLAMA_THINK`           | 是否保留 thinking 输出      | `false`                             |

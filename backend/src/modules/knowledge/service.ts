@@ -305,6 +305,7 @@ export function createKnowledgeService(
       ensureUploadSize(input.data)
       const document = await repository.findDocument(auth.tenantId, publicId)
       if (!document) throw notFound()
+      if (document.createdBy !== auth.employeeId) throw forbidden()
 
       const checksum = checksumOf(input.data)
       const duplicate = await repository.findDuplicateContent(
@@ -406,6 +407,7 @@ export function createKnowledgeService(
     async reindexVersion(auth, publicId, versionNo) {
       const document = await repository.findDocument(auth.tenantId, publicId)
       if (!document) throw notFound()
+      if (document.createdBy !== auth.employeeId) throw forbidden()
       const version = await repository.findVersion(
         auth.tenantId,
         publicId,

@@ -32,6 +32,8 @@ export interface CreateAppOptions {
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
+  /** 信任前置代理的跳数；生产 Compose 后端仅由 Nginx 转发一跳。 */
+  trustProxyHops?: number
   logger: Logger
 }
 
@@ -42,6 +44,7 @@ export interface CreateAppOptions {
 export function createApp(options: CreateAppOptions): Express {
   const app = express()
   app.disable('x-powered-by')
+  app.set('trust proxy', options.trustProxyHops ?? 0)
 
   app.use(requestIdMiddleware())
   app.use(createRequestLogger(options.logger))

@@ -5,16 +5,18 @@ import type { AuthContext, SessionStore, TokenVerifier } from './types.js'
 const BEARER_PREFIX = 'Bearer '
 
 /**
- * 校验 Authorization: Bearer <JWT>，并确认对应登录会话仍在 Redis 中。
+ * 校验 Authorization: Bearer <JWT>、Redis 会话及 MySQL 中的账号状态。
  *
- * 签名有效但会话已撤销（退出登录、账号被停用/删除）的令牌会返回 401；
+ * 已撤销会话或已停用/删除员工的令牌会返回 401；
  * Redis 不可用时返回 503，避免在校验能力失效时继续放行。
  */
 export function createAuthMiddleware(
   tokens: TokenVerifier,
   sessions: SessionStore,
+  validatePrincipal?: (context: AuthContext) => Promise<boolean>,
+  afterAuth?: RequestHandler,
 ): RequestHandler {
-  return async (req, _res, next) => {
+  return async (req, res, next) => {
     const header = req.header('authorization')
     const token = header?.startsWith(BEARER_PREFIX)
       ? header.slice(BEARER_PREFIX.length).trim()
@@ -48,7 +50,22 @@ export function createAuthMiddleware(
       throw new AppError(ErrorCode.UNAUTHORIZED, '登录状态已失效', 401)
     }
 
+    if (validatePrincipal) {
+      let principalActive: boolean
+      try {
+        principalActive = await validatePrincipal(context)
+      } catch (error) {
+        throw new AppError(ErrorCode.SERVICE_UNAVAILABLE, '账号状态服务不可用', 503, {
+          cause: error,
+        })
+      }
+      if (!principalActive) {
+        throw new AppError(ErrorCode.UNAUTHORIZED, '账号已停用或不存在', 401)
+      }
+    }
+
     req.auth = context
+    if (afterAuth) return afterAuth(req, res, next)
     next()
   }
 }

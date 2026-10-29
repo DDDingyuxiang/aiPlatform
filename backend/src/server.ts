@@ -1,4 +1,5 @@
 import { createApp } from './app.js'
+import type { RowDataPacket } from 'mysql2/promise'
 import { loadAppConfig } from './config/index.js'
 import { loadEnvFile } from './config/env.js'
 import { createDatabasePool, pingDatabase } from './infra/db.js'
@@ -50,6 +51,12 @@ import { createLocalFileStorage } from './infra/local-storage.js'
 import { createQdrantVectorStore } from './infra/qdrant.js'
 import { createKnowledgeQueue } from './infra/knowledge-queue.js'
 import { createLogger } from './shared/logger.js'
+import {
+  authIdentityKey,
+  createRedisRateLimit,
+  loginIdentityKey,
+  requestIp,
+} from './http/rate-limit.js'
 import {
   createAnnouncementsRouter,
   createAnnouncementsService,
@@ -121,10 +128,63 @@ async function main(): Promise<void> {
     maxUploadBytes: config.chat.maxUploadBytes,
     logger,
   })
-  const requireAuth = createAuthMiddleware(tokens, sessions)
+  const authenticatedApiRateLimit = createRedisRateLimit(redis, {
+    namespace: 'authenticated-api',
+    limit: 300,
+    windowMs: 60_000,
+    key: authIdentityKey,
+  })
+  const requireAuth = createAuthMiddleware(
+    tokens,
+    sessions,
+    async (context) => {
+      const [rows] = await pool.execute<Array<RowDataPacket & { active: number }>>(
+        `SELECT (e.status = 'active' AND c.status = 'active') AS active
+           FROM employees e
+           JOIN companies c ON c.id = e.tenant_id AND c.deleted_at IS NULL
+          WHERE e.tenant_id = ? AND e.id = ? AND e.deleted_at IS NULL
+          LIMIT 1`,
+        [context.tenantId, context.employeeId],
+      )
+      return rows[0]?.active === 1
+    },
+    authenticatedApiRateLimit,
+  )
+  const loginIpRateLimit = createRedisRateLimit(redis, {
+    namespace: 'login-ip',
+    limit: 60,
+    windowMs: 15 * 60_000,
+    key: requestIp,
+  })
+  const loginIdentityRateLimit = createRedisRateLimit(redis, {
+    namespace: 'login-identity',
+    limit: 10,
+    windowMs: 15 * 60_000,
+    key: loginIdentityKey,
+  })
+  const aiGenerationRateLimit = createRedisRateLimit(redis, {
+    namespace: 'ai-generation',
+    limit: 20,
+    windowMs: 10 * 60_000,
+    key: authIdentityKey,
+  })
+  const knowledgeMutationRateLimit = createRedisRateLimit(redis, {
+    namespace: 'knowledge-mutation',
+    limit: 10,
+    windowMs: 60 * 60_000,
+    key: authIdentityKey,
+  })
   const requireAnyPermission = createRequireAnyPermission(identityService)
   const requirePermission = createRequirePermission(identityService)
-  const authRouter = createAuthRouter({ service: identityService, requireAuth })
+  const authRouter = createAuthRouter({
+    service: identityService,
+    requireAuth,
+    loginRateLimit: (req, res, next) =>
+      loginIpRateLimit(req, res, (error?: unknown) => {
+        if (error) return next(error)
+        return loginIdentityRateLimit(req, res, next)
+      }),
+  })
   const identityRouter = createIdentityRouter({ service: identityService, requireAuth })
   const adminRouter = createAdminRouter({
     service: identityService,
@@ -178,6 +238,7 @@ async function main(): Promise<void> {
   const knowledgeRouter = createKnowledgeRouter({
     service: knowledgeService,
     requireAuth,
+    mutationRateLimit: knowledgeMutationRateLimit,
     maxUploadBytes: config.knowledge.maxUploadBytes,
   })
   const knowledgeRetriever = {
@@ -235,6 +296,7 @@ async function main(): Promise<void> {
     service: aiService,
     conversationService: aiConversationService,
     requireAuth,
+    generationRateLimit: aiGenerationRateLimit,
   })
 
   // 向量库不可用时不影响聊天/任务；首次检索会自动重试创建
@@ -260,6 +322,7 @@ async function main(): Promise<void> {
       await pingRedis(redis)
     },
     corsOrigins: config.corsOrigins,
+    trustProxyHops: config.env === 'production' ? 1 : 0,
     logger,
   })
 

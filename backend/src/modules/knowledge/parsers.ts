@@ -1,4 +1,5 @@
 import { extname } from 'node:path'
+import { inflateRawSync } from 'node:zlib'
 import type { KnowledgeDocFileType } from '@aiplatform/contracts'
 import JSZip from 'jszip'
 import mammoth from 'mammoth'
@@ -6,6 +7,78 @@ import { extractText } from 'unpdf'
 
 /** 单次上传允许提取的最大字符数，避免超大文档拖垮索引 */
 const MAX_EXTRACTED_CHARS = 300_000
+const MAX_ARCHIVE_ENTRIES = 1_000
+const MAX_ARCHIVE_ENTRY_BYTES = 16 * 1024 * 1024
+const MAX_ARCHIVE_TOTAL_BYTES = 32 * 1024 * 1024
+
+interface ZipObjectSizeMetadata {
+  compressedSize: number
+  uncompressedSize: number
+  compression: { magic: string }
+  compressedContent: Uint8Array
+}
+
+interface ZipObjectWithInternalData extends JSZip.JSZipObject {
+  _data?: ZipObjectSizeMetadata
+}
+
+async function loadSafeOfficeArchive(buffer: Buffer): Promise<JSZip> {
+  const zip = await JSZip.loadAsync(buffer)
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir)
+  if (entries.length > MAX_ARCHIVE_ENTRIES) {
+    throw new DocumentParseError('压缩文档包含过多文件')
+  }
+
+  let totalUncompressedBytes = 0
+  for (const entry of entries) {
+    const size = (entry as ZipObjectWithInternalData)._data
+    if (
+      !size ||
+      !Number.isSafeInteger(size.uncompressedSize) ||
+      size.uncompressedSize < 0 ||
+      !Number.isSafeInteger(size.compressedSize) ||
+      size.compressedSize < 0 ||
+      !size.compression ||
+      !size.compressedContent
+    ) {
+      throw new DocumentParseError('压缩文档目录无效')
+    }
+    if (size.compressedContent.byteLength !== size.compressedSize) {
+      throw new DocumentParseError('压缩文档目录无效')
+    }
+    if (size.uncompressedSize > MAX_ARCHIVE_ENTRY_BYTES) {
+      throw new DocumentParseError('压缩文档中的单个文件过大')
+    }
+    if (totalUncompressedBytes + size.uncompressedSize > MAX_ARCHIVE_TOTAL_BYTES) {
+      throw new DocumentParseError('压缩文档解压后过大')
+    }
+
+    const outputLimit = Math.min(
+      MAX_ARCHIVE_ENTRY_BYTES,
+      MAX_ARCHIVE_TOTAL_BYTES - totalUncompressedBytes,
+    )
+    let actualUncompressedSize: number
+    try {
+      if (size.compression.magic === '\u0000\u0000') {
+        actualUncompressedSize = size.compressedContent.byteLength
+      } else if (size.compression.magic === '\u0008\u0000') {
+        actualUncompressedSize = inflateRawSync(size.compressedContent, {
+          maxOutputLength: Math.max(1, outputLimit),
+        }).byteLength
+      } else {
+        throw new DocumentParseError('压缩文档使用了不支持的压缩算法')
+      }
+    } catch (error) {
+      if (error instanceof DocumentParseError) throw error
+      throw new DocumentParseError('压缩文档解压失败或超过资源上限')
+    }
+    if (actualUncompressedSize !== size.uncompressedSize || actualUncompressedSize > outputLimit) {
+      throw new DocumentParseError('压缩文档解压后大小与目录不符')
+    }
+    totalUncompressedBytes += actualUncompressedSize
+  }
+  return zip
+}
 
 export class DocumentParseError extends Error {
   constructor(message: string) {
@@ -64,6 +137,7 @@ async function extractPdf(buffer: Buffer): Promise<string> {
 }
 
 async function extractDocx(buffer: Buffer): Promise<string> {
+  await loadSafeOfficeArchive(buffer)
   const result = await mammoth.extractRawText({ buffer })
   return result.value
 }
@@ -79,7 +153,7 @@ function extractXmlTexts(xml: string): string {
  * 共享字符串、内联字符串与公式缓存值均可读取，日期会以序列值展示。
  */
 async function extractSpreadsheet(buffer: Buffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer)
+  const zip = await loadSafeOfficeArchive(buffer)
   const sharedXml = await zip.file('xl/sharedStrings.xml')?.async('string')
   const sharedStrings = sharedXml
     ? [...sharedXml.matchAll(/<si[^>]*>([\s\S]*?)<\/si>/g)].map((match) =>
@@ -128,7 +202,7 @@ async function extractSpreadsheet(buffer: Buffer): Promise<string> {
 }
 
 async function extractPptx(buffer: Buffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buffer)
+  const zip = await loadSafeOfficeArchive(buffer)
   const slides = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => {

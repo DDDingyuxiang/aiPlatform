@@ -14,6 +14,7 @@ import type { KnowledgeService } from './types.js'
 export interface KnowledgeRouterOptions {
   service: KnowledgeService
   requireAuth: RequestHandler
+  mutationRateLimit?: RequestHandler
   maxUploadBytes: number
 }
 
@@ -21,6 +22,7 @@ export interface KnowledgeRouterOptions {
 export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
   const router = Router()
   const { service, requireAuth, maxUploadBytes } = options
+  const mutationRateLimit = options.mutationRateLimit ?? ((_req, _res, next) => next())
 
   router.use(requireAuth)
 
@@ -35,6 +37,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
    */
   router.post(
     '/documents',
+    mutationRateLimit,
     express.raw({ type: () => true, limit: maxUploadBytes }),
     async (req, res) => {
       const query = knowledgeUploadQuerySchema.parse(req.query)
@@ -53,6 +56,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
   /** 显式上传新版本：文件本体放请求体，文件名走查询参数 */
   router.post(
     '/documents/:publicId/versions',
+    mutationRateLimit,
     express.raw({ type: () => true, limit: maxUploadBytes }),
     async (req, res) => {
       const query = knowledgeVersionUploadQuerySchema.parse(req.query)
@@ -106,6 +110,7 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
 
   router.post(
     '/documents/:publicId/versions/:versionNo/reindex',
+    mutationRateLimit,
     async (req, res) => {
       const { versionNo } = knowledgeDownloadQuerySchema.parse({
         versionNo: req.params.versionNo,

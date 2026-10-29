@@ -104,7 +104,7 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
     await passwords.verify(password, DUMMY_PASSWORD_HASH)
   }
 
-  /** 停用/删除账号后撤销其全部登录会话；失败只记录日志，认证层会 fail-closed */
+  /** 停用/删除账号后尽力清理会话；即使 Redis 撤销失败，认证层也会实时拒绝失效账号。 */
   async function revokeEmployeeSessions(
     tenantId: string,
     employeeId: string,

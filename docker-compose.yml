@@ -100,6 +100,8 @@ services:
       DB_USER: root
       DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?请在 .env 中设置 SEED_ADMIN_PASSWORD}
+      PLATFORM_SUPERADMIN_PASSWORD: ${PLATFORM_SUPERADMIN_PASSWORD:?请在 .env 中设置 PLATFORM_SUPERADMIN_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?请在 .env 中设置 APP_DB_PASSWORD}
       SEED_COMPANY_CODE: ${SEED_COMPANY_CODE:-demo}
       SEED_COMPANY_NAME: ${SEED_COMPANY_NAME:-演示企业}
     command: ["node", "dist/scripts/seed-dev.js"]
@@ -131,8 +133,8 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: ai_platform
-      DB_USER: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      DB_USER: aiplatform_app
+      DB_PASSWORD: ${APP_DB_PASSWORD:?请在 .env 中设置 APP_DB_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
@@ -205,8 +207,8 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: ai_platform
-      DB_USER: root
-      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
+      DB_USER: aiplatform_app
+      DB_PASSWORD: ${APP_DB_PASSWORD:?请在 .env 中设置 APP_DB_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
@@ -221,7 +223,7 @@ services:
       - backend_storage:/app/backend/storage
     command: ["node", "dist/worker.js"]
 
-  # 整个部署唯一对外发布的端口：浏览器只访问 Nginx（静态资源 + /api + SSE）
+  # 唯一绑定宿主机的端口；默认仅回环地址，由 HTTPS 反向代理对外服务
   frontend:
     build:
       context: .
@@ -233,7 +235,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8080}:80"
 
 volumes:
   mysql_data:

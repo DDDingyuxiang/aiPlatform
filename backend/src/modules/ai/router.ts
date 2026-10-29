@@ -14,15 +14,17 @@ export interface AiRouterOptions {
   service: AiChatService
   conversationService: AiConversationService
   requireAuth: RequestHandler
+  generationRateLimit?: RequestHandler
 }
 
 /** AI 接口：/api/v1/ai */
 export function createAiRouter(options: AiRouterOptions): Router {
   const router = Router()
   const { service, conversationService, requireAuth } = options
+  const generationRateLimit = options.generationRateLimit ?? ((_req, _res, next) => next())
 
   // 旧的无状态接口，保留兼容；新前端使用持久化会话接口
-  router.post('/chat', requireAuth, async (req, res) => {
+  router.post('/chat', requireAuth, generationRateLimit, async (req, res) => {
     const payload = aiChatRequestSchema.parse(req.body)
     const result = await service.chat(requireAuthContext(req), payload)
     sendSuccess(res, result, req.requestId)
@@ -61,7 +63,7 @@ export function createAiRouter(options: AiRouterOptions): Router {
     sendSuccess(res, result, req.requestId)
   })
 
-  router.post('/conversations/:conversationId/messages', requireAuth, async (req, res) => {
+  router.post('/conversations/:conversationId/messages', requireAuth, generationRateLimit, async (req, res) => {
     const payload = aiMessageSendSchema.parse(req.body)
     const result = await conversationService.sendMessage(
       requireAuthContext(req),
@@ -78,6 +80,7 @@ export function createAiRouter(options: AiRouterOptions): Router {
   router.post(
     '/conversations/:conversationId/messages/stream',
     requireAuth,
+    generationRateLimit,
     async (req, res) => {
       const payload = aiMessageSendSchema.parse(req.body)
       const controller = new AbortController()

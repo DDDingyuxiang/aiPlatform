@@ -75,7 +75,8 @@ cp backend/.env.example backend/.env
 | `JWT_TTL_SECONDS` | 令牌有效期，默认 `7200` |
 | `CORS_ORIGINS` | 允许的前端来源，逗号分隔 |
 | `APP_TIMEZONE` | 业务时区，默认 `Asia/Shanghai`，影响“本月考勤”边界 |
-| `SEED_ADMIN_PASSWORD` | 仅种子脚本使用，至少 8 位 |
+| `SEED_ADMIN_PASSWORD` | 企业种子账号密码；生产至少 16 位 |
+| `PLATFORM_SUPERADMIN_PASSWORD` | 平台超管独立密码；生产至少 16 位且不得与企业密码相同 |
 
 ## 本地启动
 
@@ -98,19 +99,21 @@ pnpm backend:seed
 pnpm backend:dev          # http://localhost:3000
 ```
 
-种子脚本可重复执行：企业、部门、角色、员工按唯一键复用，密码会被重置为
-`SEED_ADMIN_PASSWORD` 的当前值。脚本会创建两类演示账号（密码相同）：
+种子脚本可重复执行：企业、部门、角色、员工按唯一键复用，密码会被同步为环境变量当前值。
+本地未配置 `PLATFORM_SUPERADMIN_PASSWORD` 时，超管兼容使用企业种子密码；生产环境要求单独设置：
 
 | 账号 | 所属公司 | 用途 |
 | --- | --- | --- |
 | `admin` | `demo`（演示企业） | 公司管理员，持有 `system.employee.manage`，只能管理本企业 |
+| `employee` | `demo`（演示企业） | 普通演示员工，可发起审批 |
 | `superadmin` | `platform`（平台管理，虚拟公司） | 平台超级管理员，持有 `system.super_admin`，可跨公司管理 |
 
 同时幂等创建/修复权限码 `system.employee.manage`、`system.super_admin`，
 以及对应角色关联；上一版种子遗留在演示公司的 `super_admin` 角色分配会被清理。
 演示企业还会补齐费用报销、请假、采购、合同四类默认审批流程，均由公司管理员角色审批；
 已有启用流程不会被种子覆盖。`employee` 演示账号可发起申请，`admin` 演示账号负责审批，
-两者密码均为 `SEED_ADMIN_PASSWORD`。
+`admin` 和 `employee` 使用 `SEED_ADMIN_PASSWORD`；`superadmin` 使用
+`PLATFORM_SUPERADMIN_PASSWORD`。
 
 ## API
 

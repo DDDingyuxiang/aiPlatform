@@ -85,13 +85,15 @@ OLLAMA_HOST=0.0.0.0:11434 ollama serve
 
 ```bash
 cp .env.example .env
-# 修改 .env 中的 MYSQL_ROOT_PASSWORD / JWT_SECRET / SEED_ADMIN_PASSWORD
+# 分别生成并填写 MYSQL_ROOT_PASSWORD、APP_DB_PASSWORD、JWT_SECRET、
+# SEED_ADMIN_PASSWORD 和 PLATFORM_SUPERADMIN_PASSWORD；最后两项必须不同
 # 把 BGE_M3_MODEL_DIR 改成宿主机模型目录，例如 /home/<user>/models/bge-m3
 
 docker compose up -d --build
 ```
 
-访问 `http://localhost:8080`。
+访问 `http://localhost:8080`。Compose 默认只在本机监听；生产环境需要由 HTTPS
+反向代理连接该端口，不能直接把 HTTP 端口暴露给其他网络。
 
 启动过程：
 
@@ -102,12 +104,12 @@ docker compose up -d --build
 5. 后端、知识库 Worker 与 AI 服务启动
 6. 前端 Nginx 启动
 
-默认只对外发布**前端一个端口**（若 8080 已被占用，在 `.env` 中把
+默认只在 `127.0.0.1` 发布**前端一个端口**（若 8080 已被占用，在 `.env` 中把
 `FRONTEND_PORT` 改为其他端口；本机当前使用 `8081`）：
 
 | 服务 | 是否对宿主机发布 | 说明 |
 | --- | --- | --- |
-| 前端 / Nginx | 是 | 唯一访问入口：`http://<host>:<FRONTEND_PORT>` |
+| 前端 / Nginx | 是，仅本机 | HTTPS 反向代理的上游：`http://127.0.0.1:<FRONTEND_PORT>` |
 | 后端 API | 否 | 只经 Nginx `/api` 反向代理访问 |
 | 知识库 Worker | 否 | 消费 Redis 索引队列，与后端共享存储卷 |
 | AI 服务 | 否 | 只供后端与 Worker 访问 |
@@ -130,7 +132,12 @@ docker compose exec mysql mysql -uroot -p ai_platform
 docker compose exec redis redis-cli
 ```
 
-种子账号由 `.env` 中的 `SEED_ADMIN_PASSWORD` 决定，用户名为 `admin`。
+`admin` 和 `employee` 使用 `.env` 中的 `SEED_ADMIN_PASSWORD`；`superadmin` 使用独立的
+`PLATFORM_SUPERADMIN_PASSWORD`。每次 seed 运行都会同步对应密码，并为后端/Worker 创建
+仅具备常规数据读写权限的 `aiplatform_app` 账号，因此已有 MySQL 数据卷无需手工授予账号权限。
+
+服务端还会按账号/IP 限制登录、已登录 API、AI 生成和知识库写入频率；Office 压缩文档解压后
+最多允许 32 MiB。达到限额时返回 HTTP 429，Redis 限流服务不可用时受保护请求返回 503。
 
 停止 / 清空数据：
 
@@ -238,6 +245,7 @@ AI 抽取是异步增强能力：模型超时或输出不合法时，聊天本�
 | `KNOWLEDGE_SEARCH_OVERFETCH` | 检索多召回倍数（过滤旧版本后截断） | `3` |
 | `JWT_TTL_SECONDS` | 登录会话/JWT 有效期 | `7200` |
 | `FRONTEND_PORT` | 前端访问端口 | `8080` |
+| `FRONTEND_BIND_ADDRESS` | 前端绑定地址 | `127.0.0.1` |
 
 ## 安全提示
 
