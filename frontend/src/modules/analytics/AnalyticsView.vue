@@ -5,7 +5,6 @@ import Icon from '@/shared/components/Icon.vue'
 import type { IconName } from '@/shared/components/icon-registry'
 import BaseButton from '@/shared/components/base/BaseButton.vue'
 import BaseCard from '@/shared/components/base/BaseCard.vue'
-import BaseTag from '@/shared/components/base/BaseTag.vue'
 import StatTile from '@/shared/components/app/StatTile.vue'
 import CompareChart from './components/charts/CompareChart.vue'
 import DonutChart from './components/charts/DonutChart.vue'
@@ -35,21 +34,19 @@ const overview = computed(() => analytics.overview)
 const refetching = computed(() => analytics.loading && !!analytics.overview)
 
 const KPI_META: Record<AnalyticsKpi['key'], { icon: IconName; tone: 'primary' | 'info' | 'success' | 'warning' }> = {
-  revenue: { icon: 'trending-up', tone: 'primary' },
-  orders: { icon: 'tasks', tone: 'info' },
-  satisfaction: { icon: 'check-circle', tone: 'success' },
-  collection: { icon: 'expense', tone: 'warning' },
+  approvals: { icon: 'workflow', tone: 'primary' },
+  pendingApprovals: { icon: 'clock', tone: 'warning' },
+  taskCompletion: { icon: 'tasks', tone: 'success' },
+  attendance: { icon: 'calendar', tone: 'info' },
 }
 
 function kpiDisplay(kpi: AnalyticsKpi): string {
-  if (kpi.format === 'percent') return `${kpi.value}%`
-  if (kpi.format === 'wan') {
-    return formatNumber(kpi.value, locale.value, { maximumFractionDigits: 1 })
-  }
+  if (kpi.value === null) return '—'
+  if (kpi.format === 'percent') return `${formatNumber(kpi.value, locale.value, { maximumFractionDigits: 1 })}%`
   return formatNumber(kpi.value, locale.value)
 }
 
-const unitWan = computed(() => t('intel.analytics.unitWan'))
+const unitCount = computed(() => t('intel.analytics.unitCount'))
 
 const INSIGHT_DOT: Record<'info' | 'warning' | 'positive', string> = {
   info: 'var(--color-info)',
@@ -57,7 +54,47 @@ const INSIGHT_DOT: Record<'info' | 'warning' | 'positive', string> = {
   positive: 'var(--color-success)',
 }
 
+function csvCell(value: string | number): string {
+  return `"${String(value).replaceAll('"', '""')}"`
+}
+
 function onExport(): void {
+  if (!overview.value) return
+  const rows: Array<Array<string | number>> = [
+    [t('nav.analytics'), t(`intel.analytics.range.${overview.value.range}`)],
+    [],
+    [t('intel.analytics.exportSection'), t('intel.analytics.exportValue')],
+    ...overview.value.kpis.map((item) => [t(`intel.analytics.kpi.${item.key}`), kpiDisplay(item)]),
+    [],
+    [t('intel.analytics.charts.trend'), t('intel.analytics.charts.submitted'), t('intel.analytics.charts.processed')],
+    ...overview.value.trend.map((point) => [point.label, point.submitted, point.processed]),
+    [],
+    [t('intel.analytics.charts.departments'), t('intel.analytics.unitPeople')],
+    ...overview.value.departments.map((department) => [department.name, department.value]),
+    [],
+    [t('intel.analytics.charts.approvalTypes'), t('intel.analytics.unitCount')],
+    ...overview.value.approvalBreakdown.map((item) => [t(`intel.analytics.approvalType.${item.key}`), item.value]),
+    [],
+    [t('intel.analytics.insights.title')],
+    ...overview.value.insights.map((insight) => [
+      t(`intel.analytics.insights.${insight.key}`, { count: insight.value }),
+    ]),
+    [],
+    [t('intel.analytics.metrics.name'), t('intel.analytics.metrics.current'), t('intel.analytics.metrics.previous'), t('intel.analytics.metrics.change')],
+    ...overview.value.metrics.map((metric) => [
+      t(`intel.analytics.metrics.${metric.key}`),
+      metric.current,
+      metric.previous,
+      metric.change === null ? '—' : `${metric.change >= 0 ? '+' : ''}${metric.change}%`,
+    ]),
+  ]
+  const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}`
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `analytics-${overview.value.range}-${new Date().toISOString().slice(0, 10)}.csv`
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   toast.success(t('intel.analytics.exported'))
 }
 </script>
@@ -105,7 +142,7 @@ function onExport(): void {
         >
           <template #hint>
             <Icon
-              :name="kpi.delta.direction === 'up' ? 'trending-up' : 'trending-down'"
+              :name="kpi.delta.direction === 'up' ? 'trending-up' : kpi.delta.direction === 'down' ? 'trending-down' : 'check-circle'"
               :size="13"
             />
             <span class="u-tabular">{{ kpi.delta.text }}</span>
@@ -114,50 +151,44 @@ function onExport(): void {
       </div>
 
       <div class="analytics__grid">
-        <BaseCard class="analytics__trend" :title="t('intel.analytics.charts.trend')" :subtitle="unitWan">
+        <BaseCard class="analytics__trend" :title="t('intel.analytics.charts.trend')" :subtitle="unitCount">
           <TrendChart
             :points="overview.trend"
-            :revenue-label="t('intel.analytics.charts.trendRevenue')"
-            :cost-label="t('intel.analytics.charts.trendCost')"
-            :unit-label="unitWan"
+            :submitted-label="t('intel.analytics.charts.submitted')"
+            :processed-label="t('intel.analytics.charts.processed')"
+            :unit-label="unitCount"
           />
         </BaseCard>
 
-        <BaseCard class="analytics__compare" :title="t('intel.analytics.charts.compare')" :subtitle="unitWan">
+        <BaseCard class="analytics__compare" :title="t('intel.analytics.charts.compare')" :subtitle="unitCount">
           <CompareChart
             :buckets="overview.compare"
             :current-label="t('intel.analytics.charts.current')"
             :previous-label="t('intel.analytics.charts.previous')"
-            :unit-label="unitWan"
+            :unit-label="unitCount"
           />
         </BaseCard>
 
         <BaseCard class="analytics__insights" :title="t('intel.analytics.insights.title')">
-          <template #actions>
-            <BaseTag tone="ai">
-              <Icon name="sparkles" :size="12" />
-              <span>{{ t('common.ai.generated') }}</span>
-            </BaseTag>
-          </template>
           <ul class="analytics__insight-list">
             <li v-for="insight in overview.insights" :key="insight.id" class="analytics__insight">
               <span class="analytics__insight-dot" :style="{ background: INSIGHT_DOT[insight.tone] }" />
-              <p class="analytics__insight-text">{{ insight.text }}</p>
+              <p class="analytics__insight-text">{{ t(`intel.analytics.insights.${insight.key}`, { count: insight.value }) }}</p>
             </li>
           </ul>
           <p class="analytics__disclaimer">{{ t('intel.analytics.insights.disclaimer') }}</p>
         </BaseCard>
 
-        <BaseCard class="analytics__rank" :title="t('intel.analytics.charts.departments')" :subtitle="unitWan">
-          <RankBarChart :items="overview.departments" :unit-label="unitWan" />
+        <BaseCard class="analytics__rank" :title="t('intel.analytics.charts.departments')" :subtitle="t('intel.analytics.unitPeople')">
+          <RankBarChart :items="overview.departments" :unit-label="t('intel.analytics.unitPeople')" />
         </BaseCard>
 
-        <BaseCard class="analytics__cost" :title="t('intel.analytics.charts.cost')" :subtitle="unitWan">
+        <BaseCard class="analytics__approval-types" :title="t('intel.analytics.charts.approvalTypes')" :subtitle="unitCount">
           <DonutChart
-            :items="overview.costBreakdown"
-            :total-label="t('intel.analytics.charts.costTotal')"
-            :unit-label="unitWan"
-            :label-for="(key) => t(`intel.analytics.cost.${key}`)"
+            :items="overview.approvalBreakdown"
+            :total-label="t('intel.analytics.charts.approvalTotal')"
+            :unit-label="unitCount"
+            :label-for="(key) => t(`intel.analytics.approvalType.${key}`)"
           />
         </BaseCard>
 
@@ -174,14 +205,14 @@ function onExport(): void {
             </thead>
             <tbody>
               <tr v-for="metric in overview.metrics" :key="metric.key">
-                <td>{{ t(`intel.analytics.kpi.${metric.key}`) }}</td>
-                <td class="metrics-table__num u-tabular">{{ metric.current }}</td>
-                <td class="metrics-table__num u-tabular">{{ metric.previous }}</td>
+                <td>{{ t(`intel.analytics.metrics.${metric.key}`) }}</td>
+                <td class="metrics-table__num u-tabular">{{ formatNumber(metric.current, locale) }}</td>
+                <td class="metrics-table__num u-tabular">{{ formatNumber(metric.previous, locale) }}</td>
                 <td
                   class="metrics-table__num u-tabular"
-                  :class="metric.change >= 0 ? 'metrics-table__up' : 'metrics-table__down'"
+                  :class="metric.change === null ? '' : metric.change >= 0 ? 'metrics-table__up' : 'metrics-table__down'"
                 >
-                  {{ metric.change >= 0 ? '+' : '' }}{{ metric.change }}%
+                  {{ metric.change === null ? '—' : (metric.change >= 0 ? '+' : '') + metric.change + '%' }}
                 </td>
               </tr>
             </tbody>
@@ -297,11 +328,11 @@ function onExport(): void {
   grid-column: span 7;
 }
 
-.analytics__cost {
+.analytics__approval-types {
   grid-column: span 5;
 }
 
-/* ---- AI 洞察 ---- */
+/* ---- 运营提醒 ---- */
 .analytics__insight-list {
   display: flex;
   flex-direction: column;
@@ -392,7 +423,7 @@ function onExport(): void {
   .analytics__compare,
   .analytics__insights,
   .analytics__rank,
-  .analytics__cost {
+  .analytics__approval-types {
     grid-column: span 12;
   }
 }

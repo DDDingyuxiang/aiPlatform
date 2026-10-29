@@ -1,19 +1,19 @@
 <script setup lang="ts">
 /**
- * 费用构成环形图（部分-整体，≤6 段；金额在右侧图例中直接可读，不依赖悬浮）。
+ * 审批类型构成环形图（部分-整体，≤6 段；数量在右侧图例中直接可读）。
  * 段与段之间留 2px 表面色间隙；悬浮段高亮，圆环中心显示该段明细。
  */
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useThemeTokens } from '@/core/theme'
 import { donutArc } from './chart-utils'
-import type { CostBreakdownItem } from '../../types'
+import type { ApprovalBreakdownItem } from '../../types'
 
 const props = defineProps<{
-  items: CostBreakdownItem[]
+  items: ApprovalBreakdownItem[]
   totalLabel: string
   unitLabel: string
-  labelFor: (key: CostBreakdownItem['key']) => string
+  labelFor: (key: ApprovalBreakdownItem['key']) => string
 }>()
 
 const { locale } = useI18n()
@@ -28,7 +28,7 @@ const CY = SIZE / 2
 const OUTER_R = 86
 const INNER_R = 58
 
-const hoverKey = ref<CostBreakdownItem['key'] | null>(null)
+const hoverKey = ref<ApprovalBreakdownItem['key'] | null>(null)
 
 const total = computed(() => props.items.reduce((sum, item) => sum + item.value, 0))
 
@@ -91,7 +91,7 @@ const centerLabel = computed(() => (hovered.value ? props.labelFor(hovered.value
       </text>
     </svg>
 
-    <!-- 图例即表格视图：金额与占比直接可读 -->
+    <!-- 图例即表格视图：数量与占比直接可读 -->
     <ul class="donut__legend">
       <li
         v-for="segment in segments"

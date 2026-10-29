@@ -1,7 +1,8 @@
 # aiPlatform 后端
 
 Express 5 + TypeScript 的业务后端，采用模块化单体结构。当前已接入
-identity、conversations、tasks、ai、knowledge 模块；认证与授权中间件由各
+identity、conversations、tasks、ai、knowledge、workflows、analytics、announcements
+模块；认证与授权中间件由各
 业务模块统一复用。系统级功能、启动与部署说明见仓库根目录
 [`README.md`](../README.md)。
 
@@ -137,6 +138,7 @@ pnpm backend:dev          # http://localhost:3000
 | GET | `/api/v1/workflows/approvals` | 是 | 当前用户发起或参与的审批单 |
 | POST | `/api/v1/workflows/approvals` | 是 | 按当前启用流程发起审批 |
 | POST | `/api/v1/workflows/approvals/:id/decision` | 是 | 处理当前分配给自己的审批节点 |
+| GET | `/api/v1/analytics/overview?range=d30` | 是 | 当前企业审批、任务、考勤与部门人员运营概览；范围支持 `d7`、`d30`、`quarter`、`year` |
 
 “员工管理”权限为 `system.super_admin` 或 `system.employee.manage` 任一。
 受保护接口使用 `Authorization: Bearer <token>`。错误响应包含稳定错误码：
@@ -200,15 +202,17 @@ pnpm frontend:dev   # 或进入 frontend 执行 pnpm dev
 登录使用种子账号（`admin` 或 `superadmin`，密码为 `.env` 中的
 `SEED_ADMIN_PASSWORD`）。`superadmin` 可跨公司管理员工，`admin` 只能管理演示
 企业。当前已实现 identity、tasks、conversations、AI 对话、知识库语义检索与
-RAG；公告列表、已读与按权限发布已接入真实后端，审批与经营分析页面仍是原型。
+RAG；公告发布、审批处理和运营分析均已接入真实后端。
 公告接口支持按租户和部门范围筛选、单条标记已读、全部标记已读与发布；首次部署需执行
 `scripts/database/mysql/12_announcements.sql` 和
 `scripts/database/mysql/13_announcement_publish_permission.sql`。本地种子管理员需重新运行
 `pnpm backend:seed` 以获得公告发布权限。
 
-## 下一步
+经营分析按当前租户汇总审批、任务、考勤和在职员工部门分布；近 7/30 天与前一等长
+周期对比，本季度和今年以来与上一季度/上年同期对应日期对比。导出按钮会下载当前视图的 CSV 报表。
+系统暂未保存销售和客户满意度等数据，因此分析页不展示这些财务指标。
 
-1. workflows：审批单列表 / 发起 / 决策（契约与表结构已就绪）
-2. analytics 模块的后端接口
-3. 知识库文档 ACL 与增量索引
-4. 正式数据库迁移工具（当前以 `scripts/database/mysql` 为基线）
+## 后续方向
+
+- 知识库文档 ACL 与增量索引
+- 正式数据库迁移工具（当前以 `scripts/database/mysql` 为基线）

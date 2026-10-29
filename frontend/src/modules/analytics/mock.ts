@@ -1,5 +1,5 @@
 /**
- * 经营分析接口的 Mock 实现（演示数据，后端 analytics 模块就绪后整体删除）。
+ * 显式 Mock 模式下的经营分析演示数据；真实模式由后端 analytics 模块提供数据。
  */
 import { defineMock, fail } from '@/core/http'
 import { findMockUserId } from '@/core/auth/mock'

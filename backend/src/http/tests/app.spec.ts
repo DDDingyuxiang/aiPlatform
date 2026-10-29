@@ -146,6 +146,7 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
     knowledgeRouter: Router(),
     announcementsRouter: Router(),
     workflowsRouter: Router(),
+    analyticsRouter: Router(),
     healthCheck: async () => {
       if (!healthy) throw new Error('database down')
     },

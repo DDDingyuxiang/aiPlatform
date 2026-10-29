@@ -64,16 +64,18 @@ export function createMySqlAnnouncementsRepository(pool: Pool): AnnouncementsRep
     async create(auth, payload: CreateAnnouncementPayload) {
       let departmentId: string | null = null
       if (payload.scope === 'department') {
+        const departmentName = payload.department
+        if (!departmentName) return false
         const [departments] = await pool.execute<RowDataPacket[]>(
           `SELECT id FROM departments
             WHERE tenant_id = ? AND name = ? AND status = 'active'
               AND deleted_at IS NULL
             LIMIT 2`,
-          [auth.tenantId, payload.department],
+          [auth.tenantId, departmentName],
         )
         // Refuse ambiguous names rather than publish to an unintended department.
         if (departments.length !== 1) return false
-        departmentId = String(departments[0].id)
+        departmentId = String(departments[0]!.id)
       }
 
       await pool.execute(

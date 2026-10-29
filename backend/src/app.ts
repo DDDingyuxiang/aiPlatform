@@ -27,6 +27,8 @@ export interface CreateAppOptions {
   announcementsRouter: Router
   /** workflows 模块导出的审批路由 */
   workflowsRouter: Router
+  /** analytics 模块导出的经营分析路由 */
+  analyticsRouter: Router
   /** 检查数据库等关键依赖；失败时健康检查返回 503 */
   healthCheck: () => Promise<void>
   corsOrigins: string[]
@@ -77,6 +79,7 @@ export function createApp(options: CreateAppOptions): Express {
   api.use('/knowledge', options.knowledgeRouter)
   api.use('/announcements', options.announcementsRouter)
   api.use('/workflows', options.workflowsRouter)
+  api.use('/analytics', options.analyticsRouter)
 
   app.use('/api/v1', api)
   app.use(notFoundHandler())

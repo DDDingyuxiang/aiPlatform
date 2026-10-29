@@ -11,17 +11,19 @@ export const useAnalyticsStore = defineStore('analytics', () => {
   const overview = ref<AnalyticsOverview | null>(null)
   const range = ref<AnalyticsRange>('d30')
   const loading = ref(false)
+  let requestSequence = 0
 
   async function load(nextRange: AnalyticsRange = range.value): Promise<void> {
-    if (loading.value) return
+    const requestId = ++requestSequence
     range.value = nextRange
     loading.value = true
     try {
-      overview.value = await analyticsApi.overview(nextRange)
+      const result = await analyticsApi.overview(nextRange)
+      if (requestId === requestSequence) overview.value = result
     } catch (error) {
-      console.error('[analytics] 经营数据加载失败', error)
+      if (requestId === requestSequence) console.error('[analytics] 经营数据加载失败', error)
     } finally {
-      loading.value = false
+      if (requestId === requestSequence) loading.value = false
     }
   }
 

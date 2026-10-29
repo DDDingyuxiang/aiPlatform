@@ -60,6 +60,11 @@ import {
   createWorkflowRouter,
   createWorkflowService,
 } from './modules/workflows/index.js'
+import {
+  createAnalyticsRouter,
+  createAnalyticsService,
+  createMySqlAnalyticsRepository,
+} from './modules/analytics/index.js'
 
 async function main(): Promise<void> {
   loadEnvFile()
@@ -148,6 +153,8 @@ async function main(): Promise<void> {
     service: workflowService,
     requireAuth,
   })
+  const analyticsService = createAnalyticsService(createMySqlAnalyticsRepository(pool))
+  const analyticsRouter = createAnalyticsRouter({ service: analyticsService, requireAuth })
 
   const embeddings = createEmbeddingService({
     serviceUrl: config.ai.serviceUrl,
@@ -247,6 +254,7 @@ async function main(): Promise<void> {
     knowledgeRouter,
     announcementsRouter,
     workflowsRouter,
+    analyticsRouter,
     healthCheck: async () => {
       await pingDatabase(pool)
       await pingRedis(redis)

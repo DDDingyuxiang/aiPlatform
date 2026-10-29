@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 收入与成本趋势图（双序列折线 + 收入面积淡洗）。
+ * 审批提交与处理趋势图（双序列折线 + 提交量面积淡洗）。
  * 交互：十字准线吸附最近数据点，一个提示框列出全部序列（键盘 ←/→ 等效）。
  * 序列色固定取槽位 1、2（dataviz：固定色序），文字一律使用文本令牌。
  */
@@ -12,8 +12,8 @@ import type { TrendPoint } from '../../types'
 
 const props = defineProps<{
   points: TrendPoint[]
-  revenueLabel: string
-  costLabel: string
+  submittedLabel: string
+  processedLabel: string
   unitLabel: string
 }>()
 
@@ -36,7 +36,7 @@ const MARGIN = { top: 18, right: 20, bottom: 28, left: 52 }
 const hoverIndex = ref<number | null>(null)
 
 const yMax = computed(() => {
-  const max = Math.max(...props.points.flatMap((point) => [point.revenue, point.cost]), 1)
+  const max = Math.max(...props.points.flatMap((point) => [point.submitted, point.processed]), 1)
   return niceCeil(max * 1.1)
 })
 
@@ -55,16 +55,16 @@ function yAt(value: number): number {
   return MARGIN.top + plotH * (1 - value / yMax.value)
 }
 
-const revenuePoints = computed(() =>
-  props.points.map((point, index) => ({ x: xAt(index), y: yAt(point.revenue) })),
+const submittedPoints = computed(() =>
+  props.points.map((point, index) => ({ x: xAt(index), y: yAt(point.submitted) })),
 )
-const costPoints = computed(() =>
-  props.points.map((point, index) => ({ x: xAt(index), y: yAt(point.cost) })),
+const processedPoints = computed(() =>
+  props.points.map((point, index) => ({ x: xAt(index), y: yAt(point.processed) })),
 )
 
-const revenueLine = computed(() => linePath(revenuePoints.value))
-const costLine = computed(() => linePath(costPoints.value))
-const revenueArea = computed(() => areaPath(revenuePoints.value, MARGIN.top + plotH))
+const submittedLine = computed(() => linePath(submittedPoints.value))
+const processedLine = computed(() => linePath(processedPoints.value))
+const submittedArea = computed(() => areaPath(submittedPoints.value, MARGIN.top + plotH))
 
 /** X 轴标签抽样展示，避免碰撞 */
 const xLabels = computed(() => {
@@ -80,23 +80,23 @@ const endLabels = computed(() => {
   const count = props.points.length
   const last = props.points[count - 1]
   if (!last || count < 2) return []
-  const revenueY = yAt(last.revenue)
-  const costY = yAt(last.cost)
+  const submittedY = yAt(last.submitted)
+  const processedY = yAt(last.processed)
   const overlapNudge = 13
-  let revenueLabelY = revenueY - 8
-  let costLabelY = costY - 8
-  if (Math.abs(revenueLabelY - costLabelY) < overlapNudge) {
-    if (revenueY <= costY) {
-      revenueLabelY = revenueY - 8
-      costLabelY = costY + 14
+  let submittedLabelY = submittedY - 8
+  let processedLabelY = processedY - 8
+  if (Math.abs(submittedLabelY - processedLabelY) < overlapNudge) {
+    if (submittedY <= processedY) {
+      submittedLabelY = submittedY - 8
+      processedLabelY = processedY + 14
     } else {
-      revenueLabelY = revenueY + 14
-      costLabelY = costY - 8
+      submittedLabelY = submittedY + 14
+      processedLabelY = processedY - 8
     }
   }
   return [
-    { key: 'revenue', x: xAt(count - 1), y: revenueLabelY, value: last.revenue },
-    { key: 'cost', x: xAt(count - 1), y: costLabelY, value: last.cost },
+    { key: 'submitted', x: xAt(count - 1), y: submittedLabelY, value: last.submitted },
+    { key: 'processed', x: xAt(count - 1), y: processedLabelY, value: last.processed },
   ]
 })
 
@@ -155,11 +155,11 @@ const tooltipStyle = computed(() => {
     <div class="trend__legend">
       <span class="trend__legend-item">
         <span class="trend__legend-line" :style="{ background: tokens['--chart-1'] }" />
-        {{ revenueLabel }}
+        {{ submittedLabel }}
       </span>
       <span class="trend__legend-item">
         <span class="trend__legend-line" :style="{ background: tokens['--chart-2'] }" />
-        {{ costLabel }}
+        {{ processedLabel }}
       </span>
     </div>
 
@@ -169,7 +169,7 @@ const tooltipStyle = computed(() => {
         class="trend__svg"
         tabindex="0"
         role="img"
-        :aria-label="`${revenueLabel} / ${costLabel}`"
+        :aria-label="`${submittedLabel} / ${processedLabel}`"
         @pointermove="onPointerMove"
         @pointerleave="hoverIndex = null"
         @keydown="onKeydown"
@@ -217,11 +217,11 @@ const tooltipStyle = computed(() => {
           </text>
         </g>
 
-        <!-- 收入面积淡洗（10% 一档） -->
-        <path :d="revenueArea" :fill="tokens['--chart-1']" opacity="0.1" />
+        <!-- 提交量面积淡洗（10% 一档） -->
+        <path :d="submittedArea" :fill="tokens['--chart-1']" opacity="0.1" />
         <!-- 折线：2px 圆角连接 -->
         <path
-          :d="revenueLine"
+          :d="submittedLine"
           fill="none"
           :stroke="tokens['--chart-1']"
           stroke-width="2"
@@ -229,7 +229,7 @@ const tooltipStyle = computed(() => {
           stroke-linecap="round"
         />
         <path
-          :d="costLine"
+          :d="processedLine"
           fill="none"
           :stroke="tokens['--chart-2']"
           stroke-width="2"
@@ -251,7 +251,7 @@ const tooltipStyle = computed(() => {
         <template v-if="hoverPoint">
           <circle
             :cx="hoverX"
-            :cy="yAt(hoverPoint.revenue)"
+            :cy="yAt(hoverPoint.submitted)"
             r="4.5"
             :fill="tokens['--chart-1']"
             :stroke="tokens['--color-surface']"
@@ -259,7 +259,7 @@ const tooltipStyle = computed(() => {
           />
           <circle
             :cx="hoverX"
-            :cy="yAt(hoverPoint.cost)"
+            :cy="yAt(hoverPoint.processed)"
             r="4.5"
             :fill="tokens['--chart-2']"
             :stroke="tokens['--color-surface']"
@@ -271,7 +271,7 @@ const tooltipStyle = computed(() => {
         <template v-if="points.length > 1">
           <circle
             :cx="xAt(points.length - 1)"
-            :cy="yAt(points[points.length - 1]?.revenue ?? 0)"
+            :cy="yAt(points[points.length - 1]?.submitted ?? 0)"
             r="4.5"
             :fill="tokens['--chart-1']"
             :stroke="tokens['--color-surface']"
@@ -279,7 +279,7 @@ const tooltipStyle = computed(() => {
           />
           <circle
             :cx="xAt(points.length - 1)"
-            :cy="yAt(points[points.length - 1]?.cost ?? 0)"
+            :cy="yAt(points[points.length - 1]?.processed ?? 0)"
             r="4.5"
             :fill="tokens['--chart-2']"
             :stroke="tokens['--color-surface']"
@@ -308,13 +308,13 @@ const tooltipStyle = computed(() => {
         <p class="trend__tooltip-label">{{ hoverPoint.label }}</p>
         <p class="trend__tooltip-row">
           <span class="trend__tooltip-key" :style="{ background: tokens['--chart-1'] }" />
-          <strong>{{ valueLabel(hoverPoint.revenue) }}</strong>
-          <span>{{ revenueLabel }}</span>
+          <strong>{{ valueLabel(hoverPoint.submitted) }}</strong>
+          <span>{{ submittedLabel }}</span>
         </p>
         <p class="trend__tooltip-row">
           <span class="trend__tooltip-key" :style="{ background: tokens['--chart-2'] }" />
-          <strong>{{ valueLabel(hoverPoint.cost) }}</strong>
-          <span>{{ costLabel }}</span>
+          <strong>{{ valueLabel(hoverPoint.processed) }}</strong>
+          <span>{{ processedLabel }}</span>
         </p>
       </div>
     </div>
