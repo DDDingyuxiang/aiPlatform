@@ -19,6 +19,7 @@ __pycache__/
 # 日志与系统文件
 *.log
 .DS_Store
+SECURITY_REVIEW.md
 
 # claude code文件
 .claude
