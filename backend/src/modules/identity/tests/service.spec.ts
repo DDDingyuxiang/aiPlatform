@@ -156,6 +156,7 @@ function setup(overrides: {
 
     listAdminRoles: vi.fn(async () => overrides.adminRoles ?? []),
     listPermissions: vi.fn(async () => overrides.permissionCatalog ?? []),
+    updateAdminRolePermissions: vi.fn(async () => true),
   }
   const passwords: PasswordVerifier = {
     verify: vi.fn(

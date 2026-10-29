@@ -1,16 +1,43 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseTag from '@/shared/components/base/BaseTag.vue'
+import BaseButton from '@/shared/components/base/BaseButton.vue'
+import BaseCheckbox from '@/shared/components/base/BaseCheckbox.vue'
+import { SUPER_ADMIN_PERMISSION } from '@/core/auth/permissions'
 import type { AdminRoleSummary, PermissionSummary } from '../types'
 
-defineProps<{
+const props = defineProps<{
   roles: AdminRoleSummary[]
   permissions: PermissionSummary[]
   loading: boolean
   companySelected: boolean
+  savingRoleCode: string
+}>()
+
+const emit = defineEmits<{
+  save: [roleCode: string, permissions: string[]]
 }>()
 
 const { t } = useI18n()
+const editingRoleCode = ref('')
+const editedPermissions = ref<string[]>([])
+
+function startEdit(role: AdminRoleSummary): void {
+  editingRoleCode.value = role.code
+  editedPermissions.value = [...role.permissions]
+}
+
+function togglePermission(code: string, checked: boolean): void {
+  editedPermissions.value = checked
+    ? [...new Set([...editedPermissions.value, code])]
+    : editedPermissions.value.filter((item) => item !== code)
+}
+
+function cancelEdit(): void {
+  editingRoleCode.value = ''
+  editedPermissions.value = []
+}
 </script>
 
 <template>
@@ -29,6 +56,7 @@ const { t } = useI18n()
               <th>{{ t('system.roles.code') }}</th>
               <th>{{ t('system.roles.members') }}</th>
               <th>{{ t('system.roles.permissions') }}</th>
+              <th>{{ t('common.actions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -37,11 +65,59 @@ const { t } = useI18n()
               <td><code class="role-panel__code">{{ role.code }}</code></td>
               <td>{{ role.memberCount }}</td>
               <td>
-                <span class="role-panel__tags">
+                <template v-if="editingRoleCode === role.code">
+                  <div class="role-panel__editor">
+                    <BaseCheckbox
+                      v-for="permission in props.permissions"
+                      :key="permission.code"
+                      :model-value="editedPermissions.includes(permission.code)"
+                      :disabled="permission.code === SUPER_ADMIN_PERMISSION"
+                      @update:model-value="togglePermission(permission.code, $event)"
+                    >
+                      <span>{{ permission.description || permission.code }}</span>
+                      <code class="role-panel__code">{{ permission.code }}</code>
+                    </BaseCheckbox>
+                    <p class="role-panel__hint">{{ t('system.roles.grantHint') }}</p>
+                    <div class="role-panel__edit-actions">
+                      <BaseButton size="sm" variant="ghost" @click="cancelEdit">
+                        {{ t('common.cancel') }}
+                      </BaseButton>
+                      <BaseButton
+                        size="sm"
+                        variant="primary"
+                        :loading="savingRoleCode === role.code"
+                        @click="emit('save', role.code, editedPermissions)"
+                      >
+                        {{ t('system.roles.savePermissions') }}
+                      </BaseButton>
+                    </div>
+                  </div>
+                </template>
+                <span v-else class="role-panel__tags">
                   <BaseTag v-for="permission in role.permissions" :key="permission" tone="info">
                     {{ permission }}
                   </BaseTag>
                   <span v-if="role.permissions.length === 0" class="role-panel__muted">—</span>
+                </span>
+              </td>
+              <td>
+                <BaseButton
+                  v-if="
+                    role.code !== 'super_admin' &&
+                    !role.permissions.includes(SUPER_ADMIN_PERMISSION) &&
+                    editingRoleCode !== role.code
+                  "
+                  size="sm"
+                  variant="ghost"
+                  @click="startEdit(role)"
+                >
+                  {{ t('system.roles.grant') }}
+                </BaseButton>
+                <span
+                  v-else-if="role.code === 'super_admin' || role.permissions.includes(SUPER_ADMIN_PERMISSION)"
+                  class="role-panel__muted"
+                >
+                  {{ t('system.roles.protected') }}
                 </span>
               </td>
             </tr>
@@ -144,6 +220,29 @@ const { t } = useI18n()
   text-align: center;
   font-size: var(--font-sm);
   color: var(--color-text-3);
+}
+
+.role-panel__editor {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 260px;
+}
+
+.role-panel__editor :deep(.checkbox__label) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.role-panel__hint {
+  color: var(--color-text-3);
+  font-size: var(--font-xs);
+}
+
+.role-panel__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .role-panel__catalog {

@@ -39,6 +39,7 @@ function setup() {
     softDeleteAdminEmployee: vi.fn(async () => {}),
     listAdminRoles: vi.fn(async () => []),
     listPermissions: vi.fn(async () => []),
+    updateAdminRolePermissions: vi.fn(async () => true),
   }
   const cache = createMemoryCacheStore()
   const repository = createCachedIdentityRepository(base, cache, {

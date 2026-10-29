@@ -116,6 +116,7 @@ function createTestApp(options?: { healthy?: boolean; permissions?: string[] }) 
     updateEmployee: vi.fn(async () => adminEmployee),
     deleteEmployee: vi.fn(async () => ({ ok: true })),
     adminRoles: vi.fn(async () => ({ roles: [], permissions: [] })),
+    updateAdminRolePermissions: vi.fn(async () => ({ ok: true })),
   }
   const tokens: TokenVerifier = {
     verify: vi.fn(async (token: string) => {

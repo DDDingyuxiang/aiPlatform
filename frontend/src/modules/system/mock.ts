@@ -495,3 +495,38 @@ defineMock('GET', '/admin/roles', ({ token, query }) => {
     permissions: PERMISSION_CATALOG,
   } satisfies AdminRolesResult
 })
+
+defineMock('PATCH', '/admin/roles/:code/permissions', ({ token, query, params, body }) => {
+  const actor = authorize(token)
+  if (isMockFailure(actor)) return actor
+
+  let company: CompanySummary | null
+  if (actor.kind === 'platform' && !query.companyId) {
+    company = PLATFORM_COMPANY
+  } else {
+    const resolved = resolveCompany(actor, query.companyId)
+    if (isMockFailure(resolved)) return resolved
+    company = resolved
+  }
+  if (!company) return fail(40400, '公司不存在', 404)
+
+  const payload = body as { permissions?: unknown } | undefined
+  if (!Array.isArray(payload?.permissions) || !payload.permissions.every((code) => typeof code === 'string')) {
+    return fail(40000, '请求参数不合法', 400)
+  }
+  const codes = [...new Set(payload.permissions as string[])]
+  if (params.code === 'super_admin' || codes.includes(SUPER_ADMIN_PERMISSION)) {
+    return fail(40300, '超级管理员权限不可在此修改', 403)
+  }
+  if (codes.some((code) => !PERMISSION_CATALOG.some((permission) => permission.code === code))) {
+    return fail(40000, '角色不存在或包含无效权限', 400)
+  }
+
+  const role = (ROLE_DEFS[company.id] ?? []).find((item) => item.code === params.code)
+  if (!role) return fail(40400, '角色不存在', 404)
+  if (role.permissions.includes(SUPER_ADMIN_PERMISSION)) {
+    return fail(40300, '超级管理员权限不可在此修改', 403)
+  }
+  role.permissions.splice(0, role.permissions.length, ...codes)
+  return { ok: true }
+})

@@ -16,6 +16,7 @@ import type {
   AdminRoleRef,
   AdminRoleSummary,
   AdminRolesResult,
+  AdminRolePermissionsUpdate,
   CompanySummary,
   PermissionSummary,
 } from './types'
@@ -185,6 +186,16 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
+  async function updateRolePermissions(
+    roleCode: string,
+    permissions: string[],
+    companyId = filters.value.companyId,
+  ): Promise<void> {
+    const payload: AdminRolePermissionsUpdate = { permissions }
+    await systemApi.updateRolePermissions(roleCode, payload, companyId || undefined)
+    await loadRoles(companyId)
+  }
+
   return {
     companies,
     departments,
@@ -209,6 +220,7 @@ export const useSystemStore = defineStore('system', () => {
     loadOptions,
     loadEmployees,
     loadRoles,
+    updateRolePermissions,
     changeCompany,
     applyFilters,
     resetFilters,

@@ -146,6 +146,12 @@ export const adminRolesResultSchema = z.object({
 })
 export type AdminRolesResult = z.infer<typeof adminRolesResultSchema>
 
+/** 更新角色拥有的权限；system.super_admin 由平台级初始化与专用保护规则维护 */
+export const adminRolePermissionsUpdateSchema = z.strictObject({
+  permissions: z.array(permissionCodeSchema).max(100),
+})
+export type AdminRolePermissionsUpdate = z.infer<typeof adminRolePermissionsUpdateSchema>
+
 export const adminEmployeeDeleteResultSchema = z.object({
   ok: z.boolean(),
 })

@@ -9,6 +9,7 @@ export type {
   AdminRoleRef,
   AdminRoleSummary,
   AdminRolesResult,
+  AdminRolePermissionsUpdate,
   CompanySummary,
   PermissionSummary,
 } from '@aiplatform/contracts'

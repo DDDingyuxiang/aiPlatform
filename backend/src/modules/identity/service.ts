@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { ulid } from 'ulid'
-import { EMPLOYEE_MANAGE_PERMISSION } from '@aiplatform/contracts'
+import { EMPLOYEE_MANAGE_PERMISSION, SUPER_ADMIN_PERMISSION } from '@aiplatform/contracts'
 import type {
   AdminEmployee,
   AdminEmployeeCreate,
@@ -590,6 +590,30 @@ export function createIdentityService(options: IdentityServiceOptions): Identity
           description: permission.description ?? '',
         })),
       }
+    },
+
+    async updateAdminRolePermissions(
+      auth: AuthContext,
+      roleCode: string,
+      permissionCodes: string[],
+      companyPublicId?: string,
+    ): Promise<{ ok: boolean }> {
+      const scope = await resolveEmployeeScope(auth)
+      const company = await resolveSelectedCompany(scope, companyPublicId)
+      if (!company) throw invalid('请选择公司')
+
+      // 超级管理员权限只能通过平台初始化与受保护的员工管理流程维护。
+      if (roleCode === 'super_admin' || permissionCodes.includes(SUPER_ADMIN_PERMISSION)) {
+        throw forbidden('超级管理员权限不可在此修改')
+      }
+
+      const updated = await repository.updateAdminRolePermissions(
+        company.tenantId,
+        roleCode,
+        [...new Set(permissionCodes)],
+      )
+      if (!updated) throw invalid('角色不存在或包含无效权限')
+      return { ok: true }
     },
   }
 }

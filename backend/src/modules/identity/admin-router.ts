@@ -7,6 +7,8 @@ import {
   adminEmployeeQuerySchema,
   adminEmployeeUpdateSchema,
   adminRolesQuerySchema,
+  adminRolePermissionsUpdateSchema,
+  roleCodeSchema,
 } from '@aiplatform/contracts'
 import { sendSuccess } from '../../http/envelope.js'
 import { requireAuthContext } from './auth-middleware.js'
@@ -72,6 +74,18 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
   router.get('/roles', async (req, res) => {
     const query = adminRolesQuerySchema.parse(req.query)
     const result = await service.adminRoles(requireAuthContext(req), query.companyId)
+    sendSuccess(res, result, req.requestId)
+  })
+
+  router.patch('/roles/:code/permissions', async (req, res) => {
+    const query = adminRolesQuerySchema.parse(req.query)
+    const payload = adminRolePermissionsUpdateSchema.parse(req.body)
+    const result = await service.updateAdminRolePermissions(
+      requireAuthContext(req),
+      roleCodeSchema.parse(req.params.code),
+      payload.permissions,
+      query.companyId,
+    )
     sendSuccess(res, result, req.requestId)
   })
 

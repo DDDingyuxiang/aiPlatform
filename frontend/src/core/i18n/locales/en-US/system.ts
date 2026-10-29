@@ -79,6 +79,7 @@ export default {
     created: 'Employee created',
     updated: 'Employee updated',
     deleted: 'Employee deleted',
+    permissionsUpdated: 'Role permissions updated and applied to its members',
   },
   confirm: {
     deleteTitle: 'Delete employee',
@@ -98,6 +99,10 @@ export default {
     code: 'Role code',
     members: 'Members',
     permissions: 'Permissions',
+    grant: 'Manage permissions',
+    savePermissions: 'Save permissions',
+    grantHint: 'Changes apply to every employee assigned this role. Super admin permission is protected.',
+    protected: 'Protected',
     empty: 'No roles yet',
   },
   permissions: {

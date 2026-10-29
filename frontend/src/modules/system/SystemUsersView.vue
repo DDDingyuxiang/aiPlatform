@@ -34,6 +34,7 @@ const formOpen = ref(false)
 const editingEmployee = ref<AdminEmployee | null>(null)
 const deleteTarget = ref<AdminEmployee | null>(null)
 const deleting = ref(false)
+const savingRoleCode = ref('')
 
 const canSelectCompany = computed(() => auth.hasPermission(SUPER_ADMIN_PERMISSION))
 const totalPages = computed(() => Math.max(1, Math.ceil(store.total / store.pageSize)))
@@ -77,6 +78,18 @@ async function onSaved(): Promise<void> {
   await store.loadOptions()
   if (activeTab.value === 'roles' && store.hasCompanySelection) {
     await store.loadRoles()
+  }
+}
+
+async function saveRolePermissions(roleCode: string, permissions: string[]): Promise<void> {
+  savingRoleCode.value = roleCode
+  try {
+    await store.updateRolePermissions(roleCode, permissions, store.filters.companyId)
+    toast.success(t('system.messages.permissionsUpdated'))
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : t('system.loadFailed'))
+  } finally {
+    savingRoleCode.value = ''
   }
 }
 
@@ -282,6 +295,8 @@ async function reset(): Promise<void> {
       :permissions="store.permissions"
       :loading="store.rolesLoading"
       :company-selected="store.hasCompanySelection"
+      :saving-role-code="savingRoleCode"
+      @save="saveRolePermissions"
     />
 
     <EmployeeFormModal

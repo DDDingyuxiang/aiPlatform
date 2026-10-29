@@ -79,6 +79,7 @@ export default {
     created: '员工已创建',
     updated: '员工资料已更新',
     deleted: '员工已删除',
+    permissionsUpdated: '角色权限已更新，该角色成员将获得相应权限',
   },
   confirm: {
     deleteTitle: '删除员工',
@@ -98,6 +99,10 @@ export default {
     code: '角色代码',
     members: '成员数',
     permissions: '权限',
+    grant: '配置权限',
+    savePermissions: '保存授权',
+    grantHint: '更改会应用于所有拥有此角色的员工。超级管理员权限受到保护。',
+    protected: '受保护',
     empty: '暂无角色数据',
   },
   permissions: {

@@ -55,6 +55,16 @@ interface PermissionRow extends RowDataPacket {
   code: string
 }
 
+interface PermissionIdRow extends RowDataPacket {
+  id: string
+  code: string
+}
+
+interface RolePermissionTargetRow extends RowDataPacket {
+  id: string
+  has_super_admin: number | boolean | string
+}
+
 interface AdminEmployeeRow extends RowDataPacket {
   id: string
   tenant_id: string
@@ -1107,6 +1117,69 @@ export function createMySqlIdentityRepository(pool: Pool): IdentityRepository {
         code: row.code,
         description: row.description,
       }))
+    },
+
+    async updateAdminRolePermissions(tenantId, roleCode, permissionCodes) {
+      const connection = await pool.getConnection()
+      try {
+        await connection.beginTransaction()
+        const [roles] = await connection.execute<RolePermissionTargetRow[]>(
+          `SELECT r.id,
+                  EXISTS (
+                    SELECT 1
+                      FROM role_permissions rp
+                      JOIN permissions p ON p.id = rp.permission_id
+                     WHERE rp.role_id = r.id
+                       AND p.code = 'system.super_admin'
+                  ) AS has_super_admin
+             FROM roles r
+            WHERE r.tenant_id = ? AND r.code = ? AND r.deleted_at IS NULL
+            LIMIT 1 FOR UPDATE`,
+          [tenantId, roleCode],
+        )
+        const role = roles.at(0)
+        if (
+          !role ||
+          role.has_super_admin === true ||
+          role.has_super_admin === 1 ||
+          role.has_super_admin === '1'
+        ) {
+          await connection.rollback()
+          return false
+        }
+
+        let permissionIds: string[] = []
+        if (permissionCodes.length > 0) {
+          const placeholders = permissionCodes.map(() => '?').join(', ')
+          const [permissions] = await connection.execute<PermissionIdRow[]>(
+            `SELECT id, code FROM permissions WHERE code IN (${placeholders})`,
+            permissionCodes,
+          )
+          if (permissions.length !== permissionCodes.length) {
+            await connection.rollback()
+            return false
+          }
+          permissionIds = permissions.map((permission) => permission.id)
+        }
+
+        await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [role.id])
+        if (permissionIds.length > 0) {
+          const values = permissionIds.map(() => '(?, ?)').join(', ')
+          const parameters = permissionIds.flatMap((permissionId) => [role.id, permissionId])
+          await connection.execute(
+            `INSERT INTO role_permissions (role_id, permission_id) VALUES ${values}`,
+            parameters,
+          )
+        }
+
+        await connection.commit()
+        return true
+      } catch (error) {
+        await connection.rollback()
+        throw error
+      } finally {
+        connection.release()
+      }
     },
   }
 }

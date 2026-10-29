@@ -8,6 +8,7 @@ import type {
   AdminEmployeeQuery,
   AdminEmployeeUpdate,
   AdminRolesResult,
+  AdminRolePermissionsUpdate,
 } from './types'
 
 export const systemApi = {
@@ -32,4 +33,15 @@ export const systemApi = {
     http.get<AdminRolesResult>('/admin/roles', {
       params: companyId ? { companyId } : undefined,
     }),
+
+  updateRolePermissions: (
+    roleCode: string,
+    payload: AdminRolePermissionsUpdate,
+    companyId?: string,
+  ) =>
+    http.patch<{ ok: boolean }>(
+      `/admin/roles/${encodeURIComponent(roleCode)}/permissions`,
+      payload,
+      { params: companyId ? { companyId } : undefined },
+    ),
 }

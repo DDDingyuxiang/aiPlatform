@@ -187,5 +187,15 @@ export function createCachedIdentityRepository(
     listPermissions() {
       return cached('identity:permissions', () => base.listPermissions())
     },
+
+    async updateAdminRolePermissions(tenantId, roleCode, permissionCodes) {
+      const updated = await base.updateAdminRolePermissions(
+        tenantId,
+        roleCode,
+        permissionCodes,
+      )
+      if (updated) await invalidateTenant(tenantId)
+      return updated
+    },
   }
 }

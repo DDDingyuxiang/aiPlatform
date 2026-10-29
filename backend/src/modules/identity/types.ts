@@ -286,6 +286,11 @@ export interface IdentityRepository {
 
   listAdminRoles(tenantId: string): Promise<AdminRoleRecord[]>
   listPermissions(): Promise<PermissionRecord[]>
+  updateAdminRolePermissions(
+    tenantId: string,
+    roleCode: string,
+    permissionCodes: string[],
+  ): Promise<boolean>
 }
 
 export interface PasswordVerifier {
@@ -337,4 +342,10 @@ export interface IdentityService {
   deleteEmployee(auth: AuthContext, publicId: string): Promise<AdminEmployeeDeleteResult>
   /** 管理端角色与权限总览 */
   adminRoles(auth: AuthContext, companyPublicId?: string): Promise<AdminRolesResult>
+  updateAdminRolePermissions(
+    auth: AuthContext,
+    roleCode: string,
+    permissionCodes: string[],
+    companyPublicId?: string,
+  ): Promise<{ ok: boolean }>
 }
