@@ -194,11 +194,13 @@ pnpm frontend:dev   # 或进入 frontend 执行 pnpm dev
 登录使用种子账号（`admin` 或 `superadmin`，密码为 `.env` 中的
 `SEED_ADMIN_PASSWORD`）。`superadmin` 可跨公司管理员工，`admin` 只能管理演示
 企业。当前已实现 identity、tasks、conversations、AI 对话、知识库语义检索与
-RAG；审批、公告等页面仍会返回 404，后续模块逐个补齐。
+RAG；公告列表与已读状态已接入真实后端，审批与经营分析页面仍是原型。
+公告接口支持按租户和部门范围筛选、单条标记已读与全部标记已读；首次部署需执行
+`scripts/database/mysql/12_announcements.sql`。公告发布管理暂未接入。
 
 ## 下一步
 
 1. workflows：审批单列表 / 发起 / 决策（契约与表结构已就绪）
-2. analytics、announcements 等模块的后端接口
+2. analytics 模块的后端接口
 3. 知识库文档 ACL 与增量索引
 4. 正式数据库迁移工具（当前以 `scripts/database/mysql` 为基线）

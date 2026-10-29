@@ -49,6 +49,11 @@ import { createLocalFileStorage } from './infra/local-storage.js'
 import { createQdrantVectorStore } from './infra/qdrant.js'
 import { createKnowledgeQueue } from './infra/knowledge-queue.js'
 import { createLogger } from './shared/logger.js'
+import {
+  createAnnouncementsRouter,
+  createAnnouncementsService,
+  createMySqlAnnouncementsRepository,
+} from './modules/announcements/index.js'
 
 async function main(): Promise<void> {
   loadEnvFile()
@@ -122,6 +127,13 @@ async function main(): Promise<void> {
     maxUploadBytes: config.chat.maxUploadBytes,
   })
   const tasksRouter = createTasksRouter({ service: tasksService, requireAuth })
+  const announcementsService = createAnnouncementsService(
+    createMySqlAnnouncementsRepository(pool),
+  )
+  const announcementsRouter = createAnnouncementsRouter({
+    service: announcementsService,
+    requireAuth,
+  })
 
   const embeddings = createEmbeddingService({
     serviceUrl: config.ai.serviceUrl,
@@ -219,6 +231,7 @@ async function main(): Promise<void> {
     aiRouter,
     tasksRouter,
     knowledgeRouter,
+    announcementsRouter,
     healthCheck: async () => {
       await pingDatabase(pool)
       await pingRedis(redis)

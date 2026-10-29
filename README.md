@@ -21,10 +21,10 @@
 | 员工管理 | 企业员工、部门、角色与权限管理（按权限开放）                          | 已接入                       |
 | 审批中心 | 审批列表、发起审批、审批决策交互                                      | 前端原型，后端接口待接入     |
 | 经营分析 | 指标概览与趋势图表                                                    | 前端原型，后端接口待接入     |
-| 公告通知 | 公告列表、已读/全部已读                                               | 前端原型，后端接口待接入     |
+| 公告通知 | 公告列表、已读/全部已读                                               | 列表与已读接口已接入，发布管理待接入 |
 | 对话总结 | 历史对话总结                                                          | 占位页面                     |
 
-> 标记为“前端原型”的模块目前只有页面与 Mock 交互，真实后端路由尚未接入。
+> 标记为“前端原型”的模块目前只有页面与 Mock 交互，真实后端路由尚未接入；公告模块当前只接入列表与已读操作。
 > `frontend/public/app-config.json` 中的 `features.mockApi` 当前为 `false`，
 > 对外演示或部署前请以“已接入真实后端”的模块为准。如需单独预览这些原型页面，
 > 可将 `features.mockApi` 临时改为 `true`；此时数据来自前端 Mock，不代表真实
@@ -341,6 +341,7 @@ pnpm frontend:dev     # Vite，默认 http://localhost:5173
 | `09_knowledge_versioning.sql`        | 文档版本与当前版本指针                               |
 | `10_ai_message_knowledge_status.sql` | AI 回答的知识库检索状态                              |
 | `11_embedding_job_progress.sql`      | 索引任务阶段与进度                                   |
+| `12_announcements.sql`              | 公告与员工已读状态                                   |
 
 详细数据库约定见 [`scripts/database/README.md`](scripts/database/README.md)。
 
