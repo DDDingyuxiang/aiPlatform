@@ -7,6 +7,7 @@ import type {
   AiConversationHistory,
   AiConversationHistoryQuery,
   AiConversationSummary,
+  AiSummaryHistoryItem,
   AiHistoryMessage,
   AiKnowledgeStatus,
   AiMessageSendPayload,
@@ -52,6 +53,7 @@ export interface AiChatService extends AiModelClient {
 /** 持久化 AI 会话服务 */
 export interface AiConversationService {
   listConversations(auth: AuthContext): Promise<AiConversation[]>
+  listSummaryHistory(auth: AuthContext): Promise<AiSummaryHistoryItem[]>
   createConversation(
     auth: AuthContext,
     payload: AiConversationCreatePayload,
@@ -144,6 +146,11 @@ export interface AiSummaryRecord {
   createdAt: string
 }
 
+export interface AiSummaryHistoryRecord {
+  conversation: AiConversationRecord
+  summary: AiSummaryRecord
+}
+
 export interface CreateAiUserMessageInput {
   publicId: string
   content: string
@@ -188,6 +195,11 @@ export interface AiChatRepository {
     tenantId: string,
     employeeId: string,
   ): Promise<AiConversationRecord[]>
+
+  listSummaryHistory(
+    tenantId: string,
+    employeeId: string,
+  ): Promise<AiSummaryHistoryRecord[]>
 
   findConversation(
     tenantId: string,

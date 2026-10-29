@@ -8,6 +8,7 @@ export type {
   AiConversation,
   AiConversationHistory,
   AiConversationSummary,
+  AiSummaryHistoryItem,
   AiHistoryMessage,
   AiKnowledgeStatus,
   AiMessageSendPayload,

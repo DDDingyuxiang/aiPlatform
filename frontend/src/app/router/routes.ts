@@ -10,10 +10,9 @@ import type { RouteRecordRaw } from 'vue-router'
 import MainLayout from '@/layouts/MainLayout.vue'
 import ForbiddenView from '@/app/views/ForbiddenView.vue'
 import NotFoundView from '@/app/views/NotFoundView.vue'
-import PlaceholderView from '@/app/views/PlaceholderView.vue'
 import { DashboardView } from '@/modules/dashboard'
 import { LoginView, ProfileView } from '@/modules/auth'
-import { AiChatView } from '@/modules/ai'
+import { AiChatView, SummaryHistoryView } from '@/modules/ai'
 import { ChatView } from '@/modules/chat'
 import { MemberProfileView } from '@/modules/identity'
 import { TaskCenterView } from '@/modules/tasks'
@@ -21,9 +20,6 @@ import { WorkflowCenterView } from '@/modules/workflows'
 import { KnowledgeView } from '@/modules/knowledge'
 import { AnalyticsView } from '@/modules/analytics'
 import { AnnouncementsView } from '@/modules/announcements'
-
-/** 未开发的模块统一指向占位视图（随迭代逐步替换为真实模块） */
-const placeholder = PlaceholderView
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -73,7 +69,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'chat/summaries',
         name: 'summaries',
-        component: placeholder,
+        component: SummaryHistoryView,
         meta: { titleKey: 'nav.summaries', icon: 'summary' },
       },
       {

@@ -35,6 +35,13 @@ export function createAiRouter(options: AiRouterOptions): Router {
     sendSuccess(res, result, req.requestId)
   })
 
+  router.get('/summaries', requireAuth, async (req, res) => {
+    const result = await conversationService.listSummaryHistory(
+      requireAuthContext(req),
+    )
+    sendSuccess(res, result, req.requestId)
+  })
+
   router.post('/conversations', requireAuth, async (req, res) => {
     const payload = aiConversationCreateSchema.parse(req.body ?? {})
     const result = await conversationService.createConversation(

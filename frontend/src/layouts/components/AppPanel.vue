@@ -113,6 +113,16 @@ function isActive(prefix: string): boolean {
           </span>
           <Icon name="chevron-right" :size="14" class="ai-entry__arrow" />
         </RouterLink>
+        <RouterLink
+          to="/chat/summaries"
+          class="ai-history-link"
+          :class="{ 'ai-history-link--active': route.path === '/chat/summaries' }"
+          @click="preferences.closeMobileNav()"
+        >
+          <Icon name="summary" :size="15" />
+          <span>{{ t('nav.summaries') }}</span>
+          <Icon name="chevron-right" :size="14" class="ai-history-link__arrow" />
+        </RouterLink>
       </PanelSection>
 
       <PanelSection
@@ -202,6 +212,29 @@ function isActive(prefix: string): boolean {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.ai-history-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0 42px;
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-2);
+  font-size: var(--font-sm);
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.ai-history-link:hover,
+.ai-history-link--active {
+  color: var(--color-text-1);
+  background: var(--color-surface-2);
+}
+
+.ai-history-link__arrow {
+  margin-left: auto;
+  color: var(--color-text-3);
 }
 
 .panel__logo {

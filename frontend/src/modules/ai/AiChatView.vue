@@ -69,6 +69,14 @@ watch(
 
 onMounted(async () => {
   await store.initialize(auth.user?.employeeId)
+  const requestedConversationId = router.currentRoute.value.query.conversationId
+  if (
+    typeof requestedConversationId === 'string' &&
+    requestedConversationId !== store.activeConversationId &&
+    store.conversations.some((item) => item.id === requestedConversationId)
+  ) {
+    await store.selectConversation(requestedConversationId)
+  }
   if (store.error) toast.error(store.error)
 })
 

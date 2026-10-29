@@ -145,6 +145,13 @@ export type AiConversationSummary = z.infer<
   typeof aiConversationSummarySchema
 >
 
+/** 历史摘要列表项：摘要及其所属会话 */
+export const aiSummaryHistoryItemSchema = z.object({
+  conversation: aiConversationSchema,
+  summary: aiConversationSummarySchema,
+})
+export type AiSummaryHistoryItem = z.infer<typeof aiSummaryHistoryItemSchema>
+
 /** 历史消息响应 */
 export const aiConversationHistorySchema = z.object({
   conversation: aiConversationSchema,

@@ -13,6 +13,7 @@ import type {
   AiMessageRole,
   AiMessageStatus,
   AiSummaryRecord,
+  AiSummaryHistoryRecord,
   CreateAiAssistantMessageInput,
   CreateAiSummaryInput,
   CreateAiUserMessageInput,
@@ -55,6 +56,16 @@ interface SummaryRow extends RowDataPacket {
   prompt_version: string
   model_name: string | null
   created_at: Date | string
+}
+
+interface SummaryHistoryRow extends SummaryRow {
+  conversation_id: string
+  conversation_public_id: string
+  conversation_title: string
+  conversation_last_message_at: Date | string | null
+  conversation_last_message_preview: string | null
+  conversation_created_at: Date | string
+  conversation_updated_at: Date | string
 }
 
 interface IdRow extends RowDataPacket {
@@ -272,6 +283,61 @@ export function createMySqlAiChatRepository(pool: Pool): AiChatRepository {
         [tenantId, employeeId],
       )
       return rows.map(toConversation)
+    },
+
+    async listSummaryHistory(tenantId, employeeId) {
+      const [rows] = await pool.execute<SummaryHistoryRow[]>(
+        `SELECT c.id AS conversation_id,
+                c.public_id AS conversation_public_id,
+                c.title AS conversation_title,
+                c.last_message_at AS conversation_last_message_at,
+                c.last_message_preview AS conversation_last_message_preview,
+                c.created_at AS conversation_created_at,
+                c.updated_at AS conversation_updated_at,
+                s.id,
+                s.summary_no,
+                s.summary,
+                s.covered_message_id,
+                m.public_id AS covered_message_public_id,
+                s.prompt_version,
+                s.model_name,
+                s.created_at
+           FROM ai_conversations c
+           JOIN ai_conversation_summaries s
+             ON s.tenant_id = c.tenant_id
+            AND s.ai_conversation_id = c.id
+            AND s.summary_no = (
+              SELECT MAX(latest.summary_no)
+                FROM ai_conversation_summaries latest
+               WHERE latest.tenant_id = c.tenant_id
+                 AND latest.ai_conversation_id = c.id
+            )
+           LEFT JOIN ai_messages m
+             ON m.tenant_id = s.tenant_id
+            AND m.id = s.covered_message_id
+          WHERE c.tenant_id = ?
+            AND c.employee_id = ?
+            AND c.status = 'active'
+            AND c.deleted_at IS NULL
+          ORDER BY s.created_at DESC, c.id DESC
+          LIMIT 200`,
+        [tenantId, employeeId],
+      )
+      return rows.map((row) => ({
+        conversation: {
+          id: String(row.conversation_id),
+          publicId: row.conversation_public_id,
+          title: row.conversation_title,
+          lastMessageAt: toIsoOrNull(row.conversation_last_message_at),
+          lastMessagePreview: row.conversation_last_message_preview,
+          createdAt: toIso(row.conversation_created_at),
+          updatedAt: toIso(row.conversation_updated_at),
+        },
+        summary: toSummary({
+          ...row,
+          id: row.id,
+        }),
+      }))
     },
 
     async findConversation(tenantId, employeeId, publicId) {

@@ -413,6 +413,17 @@ export function createAiConversationService(
       return records.map(toConversation)
     },
 
+    async listSummaryHistory(auth) {
+      const records = await repository.listSummaryHistory(
+        auth.tenantId,
+        auth.employeeId,
+      )
+      return records.map((record) => ({
+        conversation: toConversation(record.conversation),
+        summary: toConversationSummary(record.summary),
+      }))
+    },
+
     async createConversation(auth, payload: AiConversationCreatePayload) {
       const title = payload.title?.trim() || '新对话'
       const record = await repository.createConversation(

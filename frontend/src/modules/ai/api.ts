@@ -6,6 +6,7 @@ import type {
   AiConversationHistory,
   AiMessageSendPayload,
   AiMessageSendResult,
+  AiSummaryHistoryItem,
   AiStreamEvent,
 } from './types'
 
@@ -22,6 +23,9 @@ function parseStreamEvent(raw: string): AiStreamEvent | null {
 
 export const aiApi = {
   listConversations: () => http.get<AiConversation[]>('/ai/conversations'),
+
+  listSummaryHistory: () =>
+    http.get<AiSummaryHistoryItem[]>('/ai/summaries'),
 
   createConversation: () =>
     http.post<AiConversation>('/ai/conversations', {}),
