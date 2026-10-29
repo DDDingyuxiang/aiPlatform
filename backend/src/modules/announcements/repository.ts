@@ -1,4 +1,6 @@
 import type { Pool, RowDataPacket } from 'mysql2/promise'
+import { ulid } from 'ulid'
+import type { CreateAnnouncementPayload } from '@aiplatform/contracts'
 import type { AuthContext } from '../identity/index.js'
 import type { AnnouncementItem, AnnouncementsRepository } from './types.js'
 
@@ -59,12 +61,47 @@ function toItem(row: AnnouncementRow): AnnouncementItem {
 /** 公告查询始终按登录上下文中的 tenant 和 employee 过滤。 */
 export function createMySqlAnnouncementsRepository(pool: Pool): AnnouncementsRepository {
   return {
+    async create(auth, payload: CreateAnnouncementPayload) {
+      let departmentId: string | null = null
+      if (payload.scope === 'department') {
+        const [departments] = await pool.execute<RowDataPacket[]>(
+          `SELECT id FROM departments
+            WHERE tenant_id = ? AND name = ? AND status = 'active'
+              AND deleted_at IS NULL
+            LIMIT 2`,
+          [auth.tenantId, payload.department],
+        )
+        // Refuse ambiguous names rather than publish to an unintended department.
+        if (departments.length !== 1) return false
+        departmentId = String(departments[0].id)
+      }
+
+      await pool.execute(
+        `INSERT INTO announcements
+           (tenant_id, public_id, title, paragraphs, scope, department_id,
+            publisher_employee_id, pinned, attachments)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, JSON_ARRAY())`,
+        [
+          auth.tenantId,
+          ulid(),
+          payload.title,
+          JSON.stringify(payload.paragraphs),
+          payload.scope,
+          departmentId,
+          auth.employeeId,
+          payload.pinned ?? false,
+        ],
+      )
+      return true
+    },
+
     async list(auth) {
       const [rows] = await pool.execute<AnnouncementRow[]>(
         `SELECT a.public_id, a.title, a.paragraphs, a.scope,
                 d.name AS department, p.public_id AS publisher_public_id,
                 p.display_name AS publisher_name, a.published_at, a.pinned,
-                a.attachments, (r.employee_id IS NOT NULL) AS is_read
+                a.attachments,
+                (r.employee_id IS NOT NULL OR a.publisher_employee_id = ?) AS is_read
            FROM announcements a
            JOIN employees p
              ON p.tenant_id = a.tenant_id AND p.id = a.publisher_employee_id
@@ -79,7 +116,7 @@ export function createMySqlAnnouncementsRepository(pool: Pool): AnnouncementsRep
             AND a.published_at <= UTC_TIMESTAMP(3)
             AND ${visibleWhere()}
           ORDER BY a.pinned DESC, a.published_at DESC, a.id DESC`,
-        [auth.employeeId, auth.tenantId, auth.employeeId],
+        [auth.employeeId, auth.employeeId, auth.tenantId, auth.employeeId],
       )
       return rows.map(toItem)
     },

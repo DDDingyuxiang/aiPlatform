@@ -6,6 +6,7 @@
  */
 import { ulid } from 'ulid'
 import {
+  ANNOUNCEMENT_PUBLISH_PERMISSION,
   EMPLOYEE_MANAGE_PERMISSION,
   SUPER_ADMIN_PERMISSION,
 } from '@aiplatform/contracts'
@@ -340,6 +341,11 @@ async function main(): Promise<void> {
       EMPLOYEE_MANAGE_PERMISSION,
       '本企业员工管理（不跨公司）',
     )
+    const announcementPublishPermissionId = await ensurePermission(
+      connection,
+      ANNOUNCEMENT_PUBLISH_PERMISSION,
+      '本企业公告发布（不跨公司）',
+    )
     const superAdminPermissionId = await ensurePermission(
       connection,
       SUPER_ADMIN_PERMISSION,
@@ -349,6 +355,7 @@ async function main(): Promise<void> {
     const adminRoleId = await ensureRole(connection, demoTenantId, 'admin', '管理员')
     await ensureRole(connection, demoTenantId, 'employee', '员工')
     await ensureRolePermission(connection, adminRoleId, employeeManagePermissionId)
+    await ensureRolePermission(connection, adminRoleId, announcementPublishPermissionId)
 
     // 兼容上一版种子：演示公司不再拥有 super_admin 角色，避免角色展示与权限语义混淆
     const legacySuperAdminRoleId = await findId(

@@ -18,6 +18,8 @@ scripts/database/
 │   ├── 09_knowledge_versioning.sql 知识库文档版本与当前版本指针
 │   ├── 10_ai_message_knowledge_status.sql 回答的知识库检索状态
 │   ├── 11_embedding_job_progress.sql 索引任务阶段与进度
+│   ├── 12_announcements.sql        公告与员工已读状态
+│   ├── 13_announcement_publish_permission.sql 公告发布权限
 │   └── ...                      后续编号迁移
 └── qdrant/                      Qdrant collection 初始化（非 SQL）
     ├── README.md
@@ -93,7 +95,8 @@ Redis 只承担缓存、限流、短期状态和队列职责，不作为权威�
 
 `permissions` 等基础数据不与 DDL 混在一起：当前由
 [`backend/src/scripts/seed-dev.ts`](../../backend/src/scripts/seed-dev.ts)
-幂等写入 `system.super_admin`、`system.employee.manage` 两个权限码及对应角色
+幂等写入 `system.super_admin`、`system.employee.manage`、`announcements.publish`
+权限码及对应角色
 关联，并创建虚拟平台公司 `platform`、平台超管账号 `superadmin` 与演示公司
 管理员账号 `admin`。后续权限码规范扩展时，继续通过种子/迁移数据维护，不修改
 表结构。

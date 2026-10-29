@@ -10,11 +10,25 @@ import { useAnnouncementsStore } from './store'
 import type { Announcement, AnnouncementScope } from './types'
 import { formatRelativeTime } from '@/shared/utils/format'
 import { toast } from '@/shared/composables/useToast'
+import { appConfig } from '@/core/config'
+import { useAuthStore } from '@/core/auth/store'
+import { ANNOUNCEMENT_PUBLISH_PERMISSION } from '@/core/auth/permissions'
 
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const announcements = useAnnouncementsStore()
+const auth = useAuthStore()
+const canPublish = computed(
+  () => appConfig.features.publishAnnouncements && auth.hasPermission(ANNOUNCEMENT_PUBLISH_PERMISSION),
+)
+const showPublishForm = ref(false)
+const publishing = ref(false)
+const publishTitle = ref('')
+const publishBody = ref('')
+const publishScope = ref<AnnouncementScope>('company')
+const publishDepartment = ref('')
+const publishPinned = ref(false)
 
 type TabKey = AnnouncementScope | 'all'
 
@@ -62,6 +76,36 @@ async function markAll(): Promise<void> {
   toast.success(t('intel.announcements.allRead'))
 }
 
+async function publish(): Promise<void> {
+  const paragraphs = publishBody.value
+    .trim()
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+  publishing.value = true
+  try {
+    await announcements.create({
+      title: publishTitle.value,
+      paragraphs,
+      scope: publishScope.value,
+      ...(publishScope.value === 'department'
+        ? { department: publishDepartment.value }
+        : {}),
+      pinned: publishPinned.value,
+    })
+    showPublishForm.value = false
+    publishTitle.value = ''
+    publishBody.value = ''
+    publishDepartment.value = ''
+    publishPinned.value = false
+    toast.success(t('intel.announcements.published'))
+  } catch {
+    toast.error(t('intel.announcements.publishFailed'))
+  } finally {
+    publishing.value = false
+  }
+}
+
 const TABS: TabKey[] = ['all', 'company', 'department', 'colleague']
 const SCOPE_TONE: Record<AnnouncementScope, 'primary' | 'info' | 'neutral'> = {
   company: 'primary',
@@ -78,6 +122,9 @@ const SCOPE_TONE: Record<AnnouncementScope, 'primary' | 'info' | 'neutral'> = {
         <p class="notices__subtitle">{{ t('intel.announcements.subtitle') }}</p>
       </div>
       <div class="notices__hero-actions">
+        <BaseButton v-if="canPublish" size="sm" @click="showPublishForm = !showPublishForm">
+          {{ showPublishForm ? t('intel.announcements.cancelPublish') : t('intel.announcements.publish') }}
+        </BaseButton>
         <span v-if="announcements.unreadCount" class="notices__unread">
           {{ t('intel.announcements.unreadCount', { count: announcements.unreadCount }) }}
         </span>
@@ -91,6 +138,41 @@ const SCOPE_TONE: Record<AnnouncementScope, 'primary' | 'info' | 'neutral'> = {
         </BaseButton>
       </div>
     </header>
+
+    <form v-if="showPublishForm && canPublish" class="publish-form" @submit.prevent="publish">
+      <label class="publish-form__field">
+        <span>{{ t('intel.announcements.title') }}</span>
+        <input v-model="publishTitle" maxlength="255" required />
+      </label>
+      <label class="publish-form__field">
+        <span>{{ t('intel.announcements.body') }}</span>
+        <textarea v-model="publishBody" rows="5" required />
+        <small>{{ t('intel.announcements.paragraphHint') }}</small>
+      </label>
+      <div class="publish-form__row">
+        <label class="publish-form__field">
+          <span>{{ t('intel.announcements.scopeLabel') }}</span>
+          <select v-model="publishScope">
+            <option value="company">{{ t('intel.announcements.scope.company') }}</option>
+            <option value="department">{{ t('intel.announcements.scope.department') }}</option>
+            <option value="colleague">{{ t('intel.announcements.scope.colleague') }}</option>
+          </select>
+        </label>
+        <label v-if="publishScope === 'department'" class="publish-form__field">
+          <span>{{ t('intel.announcements.department') }}</span>
+          <input v-model="publishDepartment" maxlength="255" required />
+        </label>
+      </div>
+      <label class="publish-form__pin">
+        <input v-model="publishPinned" type="checkbox" />
+        {{ t('intel.announcements.pinOnPublish') }}
+      </label>
+      <div class="publish-form__actions">
+        <BaseButton type="submit" size="sm" :disabled="publishing">
+          {{ publishing ? t('intel.announcements.publishing') : t('intel.announcements.publish') }}
+        </BaseButton>
+      </div>
+    </form>
 
     <div class="notices__tabs" role="tablist">
       <button
@@ -146,6 +228,42 @@ const SCOPE_TONE: Record<AnnouncementScope, 'primary' | 'info' | 'neutral'> = {
   flex-direction: column;
   gap: var(--space-5);
 }
+
+.publish-form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+}
+
+.publish-form__field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--color-text-2);
+  font-size: var(--font-sm);
+}
+
+.publish-form__field input,
+.publish-form__field textarea,
+.publish-form__field select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-1);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.publish-form__field textarea { resize: vertical; }
+.publish-form__field small { color: var(--color-text-3); }
+.publish-form__row { display: flex; gap: var(--space-3); }
+.publish-form__row > * { flex: 1; }
+.publish-form__pin { display: inline-flex; align-items: center; gap: 8px; color: var(--color-text-2); }
+.publish-form__actions { display: flex; justify-content: flex-end; }
 
 .notices__hero {
   display: flex;

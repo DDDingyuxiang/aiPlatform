@@ -1,3 +1,4 @@
+import type { CreateAnnouncementPayload } from '@aiplatform/contracts'
 import type { AuthContext } from '../identity/index.js'
 
 export interface AnnouncementItem {
@@ -17,10 +18,12 @@ export interface AnnouncementsRepository {
   list(auth: AuthContext): Promise<AnnouncementItem[]>
   markRead(auth: AuthContext, publicId: string): Promise<boolean>
   markAllRead(auth: AuthContext): Promise<void>
+  create(auth: AuthContext, payload: CreateAnnouncementPayload): Promise<boolean>
 }
 
 export interface AnnouncementsService {
   list(auth: AuthContext): Promise<AnnouncementItem[]>
   markRead(auth: AuthContext, publicId: string): Promise<void>
   markAllRead(auth: AuthContext): Promise<void>
+  create(auth: AuthContext, payload: CreateAnnouncementPayload): Promise<void>
 }

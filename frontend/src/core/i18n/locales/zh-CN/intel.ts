@@ -138,6 +138,17 @@ export default {
   },
   announcements: {
     subtitle: '公司、部门与同事的公告通知',
+    publish: '发布公告',
+    cancelPublish: '收起',
+    publishing: '发布中…',
+    published: '公告已发布',
+    publishFailed: '公告发布失败，请检查填写内容后重试',
+    title: '公告标题',
+    body: '公告正文',
+    paragraphHint: '空行会分隔正文段落',
+    scopeLabel: '可见范围',
+    department: '部门名称',
+    pinOnPublish: '置顶公告',
     scope: {
       all: '全部',
       company: '公司',

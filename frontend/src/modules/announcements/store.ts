@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { announcementsApi } from './api'
 import type { Announcement, AnnouncementScope } from './types'
+import type { CreateAnnouncementPayload } from '@aiplatform/contracts'
 
 export const useAnnouncementsStore = defineStore('announcements', () => {
   const items = ref<Announcement[]>([])
@@ -67,9 +68,27 @@ export const useAnnouncementsStore = defineStore('announcements', () => {
     }
   }
 
+  async function create(payload: CreateAnnouncementPayload): Promise<void> {
+    await announcementsApi.create(payload)
+    loaded.value = false
+    await loadAll()
+  }
+
   function byId(id: string): Announcement | undefined {
     return items.value.find((announcement) => announcement.id === id)
   }
 
-  return { items, loaded, sortedItems, recentItems, unreadCount, byScope, loadAll, markRead, markAllRead, byId }
+  return {
+    items,
+    loaded,
+    sortedItems,
+    recentItems,
+    unreadCount,
+    byScope,
+    loadAll,
+    markRead,
+    markAllRead,
+    create,
+    byId,
+  }
 })

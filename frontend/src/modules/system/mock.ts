@@ -7,6 +7,7 @@
  * - 其余账号无员工管理权限，返回 40300。
  */
 import {
+  ANNOUNCEMENT_PUBLISH_PERMISSION,
   EMPLOYEE_MANAGE_PERMISSION,
   SUPER_ADMIN_PERMISSION,
 } from '@aiplatform/contracts/permissions'
@@ -68,7 +69,7 @@ const ROLE_DEFS: Record<
       code: 'admin',
       name: '管理员',
       description: '企业内管理角色',
-      permissions: [EMPLOYEE_MANAGE_PERMISSION],
+      permissions: [EMPLOYEE_MANAGE_PERMISSION, ANNOUNCEMENT_PUBLISH_PERMISSION],
     },
     { code: 'employee', name: '员工', description: '普通员工', permissions: [] },
   ],
@@ -85,6 +86,7 @@ const ROLE_DEFS: Record<
 const PERMISSION_CATALOG = [
   { code: SUPER_ADMIN_PERMISSION, description: '超级管理员权限（拥有全部权限）' },
   { code: EMPLOYEE_MANAGE_PERMISSION, description: '本企业员工管理（不跨公司）' },
+  { code: ANNOUNCEMENT_PUBLISH_PERMISSION, description: '本企业公告发布（不跨公司）' },
 ]
 
 const INITIAL_EMPLOYEES: AdminEmployee[] = [

@@ -5,11 +5,16 @@
  * 超级管理员权限 `system.super_admin` 视为通配：持有它即拥有全部权限。
  */
 import {
+  ANNOUNCEMENT_PUBLISH_PERMISSION,
   EMPLOYEE_MANAGE_PERMISSION,
   SUPER_ADMIN_PERMISSION,
 } from '@aiplatform/contracts/permissions'
 
-export { EMPLOYEE_MANAGE_PERMISSION, SUPER_ADMIN_PERMISSION }
+export {
+  ANNOUNCEMENT_PUBLISH_PERMISSION,
+  EMPLOYEE_MANAGE_PERMISSION,
+  SUPER_ADMIN_PERMISSION,
+}
 
 export function hasPermission(granted: readonly string[], required?: string): boolean {
   if (!required) return true

@@ -4,6 +4,7 @@
  * 仅在 features.mockApi 开启时注册（模块导入即注册，见 core/http/mock.ts）。
  */
 import {
+  ANNOUNCEMENT_PUBLISH_PERMISSION,
   EMPLOYEE_MANAGE_PERMISSION,
   SUPER_ADMIN_PERMISSION,
 } from '@aiplatform/contracts/permissions'
@@ -21,7 +22,7 @@ const MOCK_USERS: MockUser[] = [
     password: '123456',
     name: '王立',
     role: 'admin',
-    permissions: [EMPLOYEE_MANAGE_PERMISSION],
+    permissions: [EMPLOYEE_MANAGE_PERMISSION, ANNOUNCEMENT_PUBLISH_PERMISSION],
     employeeId: 'E1001',
     position: '数字化平台主管',
     department: '综合管理部',

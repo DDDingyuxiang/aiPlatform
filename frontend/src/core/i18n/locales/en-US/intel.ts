@@ -139,6 +139,17 @@ export default {
   },
   announcements: {
     subtitle: 'Announcements from the company, your department and colleagues',
+    publish: 'Publish announcement',
+    cancelPublish: 'Close',
+    publishing: 'Publishing…',
+    published: 'Announcement published',
+    publishFailed: 'Could not publish announcement. Check the form and try again.',
+    title: 'Title',
+    body: 'Announcement body',
+    paragraphHint: 'Separate paragraphs with a blank line',
+    scopeLabel: 'Visible to',
+    department: 'Department name',
+    pinOnPublish: 'Pin announcement',
     scope: {
       all: 'All',
       company: 'Company',

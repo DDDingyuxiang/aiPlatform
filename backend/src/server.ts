@@ -16,6 +16,7 @@ import {
   createMySqlIdentityRepository,
   createRedisSessionStore,
   createRequireAnyPermission,
+  createRequirePermission,
   createTokenService,
   type AuthContext,
 } from './modules/identity/index.js'
@@ -112,6 +113,7 @@ async function main(): Promise<void> {
   })
   const requireAuth = createAuthMiddleware(tokens, sessions)
   const requireAnyPermission = createRequireAnyPermission(identityService)
+  const requirePermission = createRequirePermission(identityService)
   const authRouter = createAuthRouter({ service: identityService, requireAuth })
   const identityRouter = createIdentityRouter({ service: identityService, requireAuth })
   const adminRouter = createAdminRouter({
@@ -133,6 +135,7 @@ async function main(): Promise<void> {
   const announcementsRouter = createAnnouncementsRouter({
     service: announcementsService,
     requireAuth,
+    requirePublish: requirePermission('announcements.publish'),
   })
 
   const embeddings = createEmbeddingService({

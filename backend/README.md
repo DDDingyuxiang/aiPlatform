@@ -194,9 +194,11 @@ pnpm frontend:dev   # 或进入 frontend 执行 pnpm dev
 登录使用种子账号（`admin` 或 `superadmin`，密码为 `.env` 中的
 `SEED_ADMIN_PASSWORD`）。`superadmin` 可跨公司管理员工，`admin` 只能管理演示
 企业。当前已实现 identity、tasks、conversations、AI 对话、知识库语义检索与
-RAG；公告列表与已读状态已接入真实后端，审批与经营分析页面仍是原型。
-公告接口支持按租户和部门范围筛选、单条标记已读与全部标记已读；首次部署需执行
-`scripts/database/mysql/12_announcements.sql`。公告发布管理暂未接入。
+RAG；公告列表、已读与按权限发布已接入真实后端，审批与经营分析页面仍是原型。
+公告接口支持按租户和部门范围筛选、单条标记已读、全部标记已读与发布；首次部署需执行
+`scripts/database/mysql/12_announcements.sql` 和
+`scripts/database/mysql/13_announcement_publish_permission.sql`。本地种子管理员需重新运行
+`pnpm backend:seed` 以获得公告发布权限。
 
 ## 下一步
 
